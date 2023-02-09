@@ -1,12 +1,14 @@
-from typing import List, Optional, NoReturn, Callable, Tuple, Any, Set
+from typing import Union, List, Optional, NoReturn, Callable, Tuple, Any, Set
 from dataclasses import dataclass
+from copy import deepcopy
 
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt,
                       CondStmt, WhileLoopStmt, FDefStmt, Program, RetStmt,
-                      ConstExpr, POIStmt, assert_never)
+                      ConstExpr, POIStmt, ControlFlowStyle as CFS, assert_never)
 
 import numpy as np
-from numpy.random import rand, uniform
+from numpy import floor
+from numpy.random import seed as np_seed, rand, uniform, set_state, get_state
 
 class RNGBase:
     """ Base interface class for Random Number Generators """
@@ -16,11 +18,20 @@ class RNGBase:
         raise NotImplementedError
 
 class RNG(RNGBase):
-    """ Sample numpy RNG implementation """
+    """ Sample numpy RNG implementation, not for parallel execution. """
+    def __init__(self, seed:int):
+        np_seed(seed)
+        self.state = get_state()
     def sample(self) -> float:
-        return rand()
+        set_state(self.state)
+        r = rand()
+        self.state = get_state()
+        return r
     def sample_uniform(self, upper:int, lower:int=0) -> int:
-        return int(np.floor(uniform(lower, upper)))
+        set_state(self.state)
+        r = int(floor(uniform(lower, upper)))
+        self.state = get_state()
+        return r
 
 
 def sample_oneof(rng:RNGBase, candidates:list) -> Any:
@@ -43,65 +54,101 @@ def sample_assign(rng:RNGBase, exprs:List[Expr]) -> AssignStmt:
                       sample_oneof(rng, exprs))
 
 @dataclass
-class POI:
-    """ Point Of Insertion referes to the point where we could insert new
-    statements. POI tracks variables in scope. """
-    root: POIStmt
+class Context:
+    """ Context of POI contains some information required to insert new
+    statemtents at POI. """
     vscope: Set[VName]
+    parent: Optional["Context"]
+    def __init__(self, vscope:Optional[Set[VName]]=None, parent=None):
+        self.vscope=vscope if vscope is not None else set()
+        self.parent=parent
 
 @dataclass
-class StmtCandidate:
-    """ StmtCandidate maintains the statement being built and keeps all its
-    points of insertion acessible. """
+class POIWithContext:
+    """ Point Of Insertion with the context tracks the information which is
+    required for making POI insertions. """
+    root: POIStmt
+    ctx: Context
+
+PWC = POIWithContext
+""" A shorter alias for POIWithContext """
+
+@dataclass
+class POITracker:
+    """ POITracker maintains the program being built and keeps all its
+    points of insertion acessible and their contexts are known. """
     stmt: Stmt
-    pois: List[POI]
+    pois: List[POIWithContext]
 
-FDEF_ARG_ID:int = 0
+    def _resolve(self, poic:Union[int,PWC]) -> POIWithContext:
+        if isinstance(poic, int):
+            return self.pois[poic]
+        elif isinstance(poic, POIWithContext):
+            return poic
+        else:
+            assert_never(poic)
 
-def sample_fdef(rng:RNGBase, nargs:int) -> FDefStmt:
-    global FDEF_ARG_ID
-    args = [VName(f"arg{FDEF_ARG_ID+i}") for i in range(nargs)]
-    FDEF_ARG_ID += nargs
+    def insert_statement(self, poic:Union[int,PWC], s:Stmt) -> "POITracker":
+        """ Add a new statement at the point of insertion """
+        poicI:PWC = self._resolve(poic)
+        for poicS in contextualize(s):
+            if poicS.ctx.parent is None:
+                poicS.ctx.parent = poicI.ctx
+            self.pois.append(poicS)
+        poicI.root.stmts.append(s)
+        if isinstance(s, AssignStmt) and s.vname is not None:
+            poicI.ctx.vscope.add(s.vname)
+        return self
+
+    def insert_tracker(self, poic:Union[int,PWC], sc2:"POITracker") -> "POITracker":
+        return self.insert_statement(poic, sc2.stmt)
+
+def sample_fdef(rng:RNGBase, args:List[VName]) -> FDefStmt:
     return FDefStmt([FName('qjit')], sample_fname(rng), args, POIStmt())
 
 def sample_while(rng:RNGBase, cond:Expr) -> WhileLoopStmt:
     return WhileLoopStmt(cond, POIStmt())
 
-def sample_cond(rng:RNGBase, cond:Expr) -> CondStmt:
-    return CondStmt(cond, POIStmt(), sample_oneof(rng, [None, POIStmt()]))
+def sample_cond(rng:RNGBase, cond:Expr, style=CFS.Python) -> CondStmt:
+    return CondStmt(cond, POIStmt(),
+                    sample_oneof(rng, [None, POIStmt()]), style)
 
-def pois_toplevel(s:Stmt) -> List[POI]:
-    """ List the top-level POIs of a statement """
-    def _c(ss, scope=None):
-        return [POI(s, (set(scope) if scope else set())) for s in ss]
+def pois_scan_inplace(ss:List[Stmt], ctx:Context, acc:List[PWC]) -> None:
+    for s in ss:
+        if isinstance(s, AssignStmt) and s.vname is not None:
+            ctx.vscope.add(s.vname)
+        acc.extend(contextualize(s, ctx))
+
+def contextualize(s:Stmt, ctx:Optional[Context]=None) -> List[PWC]:
+    """ Recursively collect insertion contexts across the statement. """
+    acc:List[PWC] = list()
     if isinstance(s, AssignStmt):
-        return _c([])
+        return []
     elif isinstance(s, WhileLoopStmt):
-        return _c([s.body])
+        ctx1 = Context(parent=ctx)
+        pois_scan_inplace(s.body.stmts, ctx1, acc)
+        acc.append(PWC(s.body, ctx1))
+        return acc
     elif isinstance(s, CondStmt):
-        return _c([s.trueBranch] + ([s.falseBranch] if s.falseBranch else []))
+        ctx1 = Context(parent=ctx)
+        pois_scan_inplace(s.trueBranch.stmts, ctx1, acc)
+        acc.append(POIWithContext(s.trueBranch, ctx1))
+        if s.falseBranch is not None:
+            ctx2 = Context(parent=ctx)
+            pois_scan_inplace(s.falseBranch.stmts, ctx2, acc)
+            acc.append(POIWithContext(s.falseBranch, ctx2))
+        return acc
     elif isinstance(s, FDefStmt):
-        return _c([s.body], s.args)
+        ctx1 = Context(set(s.args),parent=ctx)
+        pois_scan_inplace(s.body.stmts, ctx1, acc)
+        acc.append(POIWithContext(s.body, ctx1))
+        return acc
     else:
         assert_never(s)
 
-def candidate(s:Stmt) -> StmtCandidate:
-    return StmtCandidate(s, pois_toplevel(s))
+def track(s:Stmt) -> POITracker:
+    """ Construct the statement insertion tracker """
+    return POITracker(s, contextualize(s))
 
-def insert_inplace(sc1:StmtCandidate, poi1:POI, s:Stmt) -> StmtCandidate:
-    """ """
-    pois2 = [POI(poi.root, poi1.vscope|poi.vscope) for poi in pois_toplevel(s)]
-    poi1.root.stmts.append(s)
-    sc1.pois.extend(pois2)
-    return sc1
-
-def combine_inplace(sc1:StmtCandidate, poi1:POI, sc2:StmtCandidate) -> StmtCandidate:
-    """ Combine two statement candidates into one by inserting the latter into
-    the point of insertion `poi1` of the former."""
-    poi1.root.stmts.append(sc2.stmt)
-    scope1 = poi1.vscope
-    pois2 = [POI(poi.root, scope1|poi.vscope) for poi in sc2.pois]
-    sc1.pois.extend(pois2)
-    return sc1
 
 
