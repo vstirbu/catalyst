@@ -4,7 +4,8 @@ from copy import deepcopy
 
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt,
                       CondStmt, WhileLoopStmt, FDefStmt, Program, RetStmt,
-                      ConstExpr, POIStmt, ControlFlowStyle as CFS, assert_never)
+                      ConstExpr, POIStmt, ForLoopStmt,
+                      ControlFlowStyle as CFS, assert_never)
 
 import numpy as np
 from numpy import floor
@@ -58,16 +59,23 @@ class Context:
     """ Context of POI contains some information required to insert new
     statemtents at POI. """
     vscope: Set[VName]
+    nwires: Optional[int]
     parent: Optional["Context"]
-    def __init__(self, vscope:Optional[Set[VName]]=None, parent=None):
-        self.vscope=vscope if vscope is not None else set()
-        self.parent=parent
+
+    def __init__(self,
+                 vscope:Optional[Set[VName]]=None, nwires=None, parent=None):
+        self.vscope = vscope if vscope is not None else set()
+        self.nwires = nwires
+        self.parent = parent
+
+    def get_vscope(self) -> Set[VName]:
+        return self.vscope | (self.parent.get_vscope() if self.parent else set())
 
 @dataclass
 class POIWithContext:
     """ Point Of Insertion with the context tracks the information which is
     required for making POI insertions. """
-    root: POIStmt
+    poi: POIStmt
     ctx: Context
 
 PWC = POIWithContext
@@ -95,7 +103,7 @@ class POITracker:
             if poicS.ctx.parent is None:
                 poicS.ctx.parent = poicI.ctx
             self.pois.append(poicS)
-        poicI.root.stmts.append(s)
+        poicI.poi.stmts.append(s)
         if isinstance(s, AssignStmt) and s.vname is not None:
             poicI.ctx.vscope.add(s.vname)
         return self
@@ -103,8 +111,9 @@ class POITracker:
     def insert_tracker(self, poic:Union[int,PWC], sc2:"POITracker") -> "POITracker":
         return self.insert_statement(poic, sc2.stmt)
 
-def sample_fdef(rng:RNGBase, args:List[VName]) -> FDefStmt:
-    return FDefStmt([FName('qjit')], sample_fname(rng), args, POIStmt())
+def sample_fdef(rng:RNGBase, fname:FName, args:List[VName],
+                qwires=None) -> FDefStmt:
+    return FDefStmt(fname, args, POIStmt(), qwires=qwires)
 
 def sample_while(rng:RNGBase, cond:Expr) -> WhileLoopStmt:
     return WhileLoopStmt(cond, POIStmt())
@@ -126,6 +135,11 @@ def contextualize(s:Stmt, ctx:Optional[Context]=None) -> List[PWC]:
         return []
     elif isinstance(s, WhileLoopStmt):
         ctx1 = Context(parent=ctx)
+        pois_scan_inplace(s.body.stmts, ctx1, acc)
+        acc.append(PWC(s.body, ctx1))
+        return acc
+    elif isinstance(s, ForLoopStmt):
+        ctx1 = Context(parent=ctx, vscope=set([s.loopvar]))
         pois_scan_inplace(s.body.stmts, ctx1, acc)
         acc.append(PWC(s.body, ctx1))
         return acc

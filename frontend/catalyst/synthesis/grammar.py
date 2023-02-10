@@ -37,7 +37,8 @@ class ConstExpr:
 trueExpr = ConstExpr(True)
 falseExpr = ConstExpr(False)
 
-Stmt = Union["AssignStmt", "CondStmt", "WhileLoopStmt", "FDefStmt", "RetStmt"]
+Stmt = Union["AssignStmt", "CondStmt", "WhileLoopStmt", "FDefStmt", "RetStmt",
+             "ForLoopStmt"]
 
 @dataclass(unsafe_hash=True)
 class POIStmt:
@@ -68,6 +69,15 @@ class CondStmt:
     style: ControlFlowStyle
 
 @dataclass
+class ForLoopStmt:
+    """ Statement - while loop """
+    loopvar: VName
+    lbound: Expr
+    ubound: Expr
+    body: POIStmt
+    style: ControlFlowStyle
+
+@dataclass
 class WhileLoopStmt:
     """ Statement - while loop """
     cond: Expr
@@ -76,10 +86,11 @@ class WhileLoopStmt:
 @dataclass
 class FDefStmt:
     """ Statement - function declaration """
-    decorators: List[FName]
     fname: FName
     args: List[VName]
     body: POIStmt
+    qwires: Optional[int] = None
+    qdevice: Optional[str] = None
 
 @dataclass
 class RetStmt:
