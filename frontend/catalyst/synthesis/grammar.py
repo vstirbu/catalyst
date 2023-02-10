@@ -11,10 +11,16 @@ class VName:
     """ Alias for strings representing variable names """
     val: str
 
+    def __lt__(self, other):
+        return self.val < other.val
+
 @dataclass(frozen=True)
 class FName:
     """ Alias for strings representing function names """
     val: str
+
+    def __lt__(self, other):
+        return self.val < other.val
 
 Expr = Union["VRefExpr","FCallExpr", "ConstExpr"]
 

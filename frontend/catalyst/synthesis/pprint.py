@@ -69,8 +69,8 @@ def pprint_stmt(s:Stmt, indent:int=0,
             assert_never(s.style)
     elif isinstance(s, ForLoopStmt):
         if s.style == ControlFlowStyle.Python:
-            return _p([f"for {s.loopvar} in range({pprint_expr(s.lbound)}, "
-                                                f"{pprint_expr(s.ubound)}):"] +
+            return _p([f"for {s.loopvar.val} in range({pprint_expr(s.lbound)}, "
+                                                    f"{pprint_expr(s.ubound)}):"] +
                       _ne([pprint_stmt(s, 1, hint) for s in s.body.stmts]) +
                       _hl(s.body))
         else:
@@ -99,7 +99,7 @@ def pprint_tracker(t:POITracker, indent:int=0) -> List[str]:
     def _hp(poi:POIStmt) -> List[str]:
         for poic in t.pois:
             if poi is poic.poi:
-                return [', '.join(v.val for v in poic.ctx.get_vscope())]
+                return [', '.join(v.val for v in sorted(poic.ctx.get_vscope()))]
         return []
     return pprint_stmt(t.stmt, indent, _hp)
 
