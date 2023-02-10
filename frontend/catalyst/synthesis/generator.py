@@ -162,7 +162,8 @@ def contextualize(s:Stmt, ctx:Optional[Context]=None) -> List[PWC]:
 
 def track(s:Stmt) -> POITracker:
     """ Construct the statement insertion tracker """
-    return POITracker(s, contextualize(s))
+    s1 = deepcopy(s)
+    return POITracker(s1, contextualize(s1))
 
 
 
