@@ -6,6 +6,18 @@ from typing import (Any, List, Optional, Dict, Union, NoReturn)
 from dataclasses import dataclass
 from enum import Enum
 
+
+@dataclass(unsafe_hash=True)
+class POI:
+    """ Point Of Insertion. By convention, we allow inserting new
+    statements strictly at the end of the list of already existing ones. """
+    stmts:List["Stmt"]
+    expr:"Expr"
+    def __init__(self, stmts=None, expr=None):
+        self.stmts = stmts if stmts is not None else []
+        self.expr = expr if expr is not None else NoneExpr
+
+
 @dataclass(frozen=True)
 class VName:
     """ Alias for strings representing variable names """
@@ -22,7 +34,7 @@ class FName:
     def __lt__(self, other):
         return self.val < other.val
 
-Expr = Union["VRefExpr","FCallExpr", "ConstExpr"]
+Expr = Union["VRefExpr","FCallExpr", "ConstExpr", "NoneExpr", "CondExpr" ]
 
 @dataclass(frozen=True)
 class FCallExpr:
@@ -43,23 +55,10 @@ class ConstExpr:
 trueExpr = ConstExpr(True)
 falseExpr = ConstExpr(False)
 
-Stmt = Union["AssignStmt", "CondStmt", "WhileLoopStmt", "FDefStmt", "RetStmt",
-             "ForLoopStmt"]
-
-@dataclass(unsafe_hash=True)
-class POIStmt:
-    """ Statement - Point Of Insertion. By convention, we allow inserting new
-    statements strictly at the end of the list of already existing ones. """
-    stmts:List[Stmt]
-    def __init__(self, stmts=None):
-        self.stmts = stmts if stmts is not None else []
-
-@dataclass
-class AssignStmt:
-    """ Statement - variable assignemnt or a function call """
-    vname: Optional[VName]
-    expr: Expr
-
+@dataclass(frozen=True)
+class NoneExpr:
+    """ Alias for None """
+    pass
 
 class ControlFlowStyle(Enum):
     Python = 0
@@ -67,12 +66,15 @@ class ControlFlowStyle(Enum):
     JAX = 2
 
 @dataclass
-class CondStmt:
+class CondExpr:
     """ Statement - conditional """
     cond: Expr
-    trueBranch: POIStmt
-    falseBranch: Optional[POIStmt]
+    trueBranch: POI
+    falseBranch: Optional[POI]
     style: ControlFlowStyle
+
+Stmt = Union["AssignStmt", "FDefStmt", "RetStmt",
+             "WhileLoopStmt", "ForLoopStmt"]
 
 @dataclass
 class ForLoopStmt:
@@ -80,21 +82,28 @@ class ForLoopStmt:
     loopvar: VName
     lbound: Expr
     ubound: Expr
-    body: POIStmt
+    body: POI
     style: ControlFlowStyle
 
 @dataclass
 class WhileLoopStmt:
     """ Statement - while loop """
     cond: Expr
-    body: POIStmt
+    body: POI
+    style: ControlFlowStyle
+
+@dataclass
+class AssignStmt:
+    """ Statement - variable assignemnt or a function call """
+    vname: Optional[VName]
+    expr: Expr
 
 @dataclass
 class FDefStmt:
     """ Statement - function declaration """
     fname: FName
     args: List[VName]
-    body: POIStmt
+    body: POI
     qwires: Optional[int] = None
     qdevice: Optional[str] = None
 
