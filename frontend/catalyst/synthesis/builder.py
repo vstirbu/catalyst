@@ -4,7 +4,7 @@ from copy import deepcopy
 
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt,
                       CondExpr, WhileLoopStmt, FDefStmt, Program, RetStmt,
-                      ConstExpr, POI, ForLoopStmt,
+                      ConstExpr, POI, ForLoopExpr,
                       ControlFlowStyle as CFS, assert_never)
 
 import numpy as np
@@ -85,6 +85,12 @@ def contextualize_expr(e:Expr, ctx:Optional[Context]=None) -> List[PWC]:
             ctx2 = Context(parent=ctx)
             pois_scan_inplace(e.falseBranch.stmts, ctx2, acc)
             acc.append(POIWithContext(e.falseBranch, ctx2))
+    elif isinstance(e, ForLoopExpr):
+        acc.extend(contextualize_expr(e.lbound, ctx))
+        acc.extend(contextualize_expr(e.ubound, ctx))
+        ctx1 = Context(parent=ctx, vscope=set([e.loopvar]))
+        pois_scan_inplace(e.body.stmts, ctx1, acc)
+        acc.append(PWC(e.body, ctx1))
     else:
         pass
     return acc
@@ -99,12 +105,12 @@ def contextualize(s:Stmt, ctx:Optional[Context]=None) -> List[PWC]:
         ctx1 = Context(parent=ctx)
         pois_scan_inplace(s.body.stmts, ctx1, acc)
         acc.append(PWC(s.body, ctx1))
-    elif isinstance(s, ForLoopStmt):
-        acc.extend(contextualize_expr(s.lbound, ctx))
-        acc.extend(contextualize_expr(s.ubound, ctx))
-        ctx1 = Context(parent=ctx, vscope=set([s.loopvar]))
-        pois_scan_inplace(s.body.stmts, ctx1, acc)
-        acc.append(PWC(s.body, ctx1))
+    # elif isinstance(s, ForLoopStmt):
+    #     acc.extend(contextualize_expr(s.lbound, ctx))
+    #     acc.extend(contextualize_expr(s.ubound, ctx))
+    #     ctx1 = Context(parent=ctx, vscope=set([s.loopvar]))
+    #     pois_scan_inplace(s.body.stmts, ctx1, acc)
+    #     acc.append(PWC(s.body, ctx1))
     # elif isinstance(s, CondStmt):
     #     ctx1 = Context(parent=ctx)
     #     pois_scan_inplace(s.trueBranch.stmts, ctx1, acc)

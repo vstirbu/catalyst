@@ -34,7 +34,8 @@ class FName:
     def __lt__(self, other):
         return self.val < other.val
 
-Expr = Union["VRefExpr","FCallExpr", "ConstExpr", "NoneExpr", "CondExpr" ]
+Expr = Union["VRefExpr","FCallExpr", "ConstExpr", "NoneExpr", "CondExpr",
+             "ForLoopExpr" ]
 
 @dataclass(frozen=True)
 class FCallExpr:
@@ -67,23 +68,23 @@ class ControlFlowStyle(Enum):
 
 @dataclass
 class CondExpr:
-    """ Statement - conditional """
+    """ Expression - conditional """
     cond: Expr
     trueBranch: POI
     falseBranch: Optional[POI]
     style: ControlFlowStyle
 
-Stmt = Union["AssignStmt", "FDefStmt", "RetStmt",
-             "WhileLoopStmt", "ForLoopStmt"]
-
 @dataclass
-class ForLoopStmt:
-    """ Statement - while loop """
+class ForLoopExpr:
+    """ Expression - while loop """
     loopvar: VName
     lbound: Expr
     ubound: Expr
     body: POI
     style: ControlFlowStyle
+
+Stmt = Union["AssignStmt", "FDefStmt", "RetStmt",
+             "WhileLoopStmt"]
 
 @dataclass
 class WhileLoopStmt:

@@ -4,7 +4,7 @@ from copy import deepcopy
 
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt,
                       CondStmt, WhileLoopStmt, FDefStmt, Program, RetStmt,
-                      ConstExpr, POI, ForLoopStmt,
+                      ConstExpr, POI, ForLoopExpr,
                       ControlFlowStyle as CFS, assert_never)
 
 import numpy as np

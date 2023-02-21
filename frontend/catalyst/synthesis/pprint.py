@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt,
                       CondExpr, WhileLoopStmt, FDefStmt, Program, RetStmt,
-                      ConstExpr, NoneExpr, POI, ForLoopStmt, ControlFlowStyle,
+                      ConstExpr, NoneExpr, POI, ForLoopExpr, ControlFlowStyle,
                       assert_never)
 
 from .builder import (Builder)
@@ -67,14 +67,30 @@ def pstr_expr(expr:Expr,
             true_part = (
                 _in(st, [f"@cond({lcond})",
                          f"def {nmcond}():"]) +
-                _ne(st, [pstr_stmt(s, st1, hint) for s in e.trueBranch.stmts]) +
+                _ne(st, [pstr_stmt(s, st1, hint) for s in e.trueBranch.stmts] +
+                        [pstr_stmt(RetStmt(e.trueBranch.expr), st1, hint)]) +
                 _hi(st, hint, e.trueBranch))
             false_part = (
                 _in(st, [f"@{nmcond}.otherwise",
                          f"def {nmcond}():"]) +
-                _ne(st, [pstr_stmt(s, st1, hint) for s in e.falseBranch.stmts]) +
+                _ne(st, [pstr_stmt(s, st1, hint) for s in e.falseBranch.stmts] +
+                        [pstr_stmt(RetStmt(e.falseBranch.expr), st1, hint)]) +
                 _hi(st, hint, e.falseBranch)) if e.falseBranch else []
             return acc + true_part + false_part, f"{nmcond}()"
+        else:
+            assert_never(e.style)
+    elif isinstance(e, ForLoopExpr):
+        accL, lexprL = pstr_expr(e.lbound, state, hint)
+        accU, lexprU = pstr_expr(e.ubound, state, hint)
+        if e.style == ControlFlowStyle.Catalyst:
+            st1, nforloop = st.tabulate().issue("forloop")
+            return (
+                accL + accU +
+                _in(st, [f"@fori_loop({lexprL},{lexprU},1)",
+                         f"def {nforloop}({e.loopvar.val}):"]) +
+                _ne(st, [pstr_stmt(s, st1, hint) for s in e.body.stmts] +
+                        [pstr_stmt(RetStmt(e.body.expr), st1, hint)]) +
+                _hi(st, hint, e.body), f"{nforloop}()")
         else:
             assert_never(e.style)
     elif isinstance(e, NoneExpr):
@@ -104,26 +120,13 @@ def pstr_stmt(s:Stmt,
     if False:
         pass
     elif isinstance(s, AssignStmt):
-        acc, lexpr = pstr_expr(s.expr, state, hint)
+        acc, lexpr = pstr_expr(s.expr, st, hint)
         if s.vname is not None:
             return acc + _in(st, [f"{s.vname.val} = {lexpr}"])
         else:
             return acc + _in(st, [lexpr])
-    elif isinstance(s, ForLoopStmt):
-        accL, lexprL = pstr_expr(s.lbound, state, hint)
-        accU, lexprU = pstr_expr(s.ubound, state, hint)
-        if s.style == ControlFlowStyle.Python:
-            st1 = st.tabulate()
-            return (
-                accL + accU +
-                _in(st, [f"for {s.loopvar.val} in range({lexprL}, "
-                                                      f"{lexprU}):"]) +
-                _ne(st, [pstr_stmt(s, st1, hint) for s in s.body.stmts]) +
-                _hi(st, hint, s.body))
-        else:
-            assert_never(s.style)
     elif isinstance(s, WhileLoopStmt):
-        acc, lexpr = pstr_expr(s.cond, state, hint)
+        acc, lexpr = pstr_expr(s.cond, st, hint)
         if s.style == ControlFlowStyle.Python:
             st1 = st.tabulate()
             return (
@@ -145,14 +148,14 @@ def pstr_stmt(s:Stmt,
             _hi(st, hint, s.body))
     elif isinstance(s, RetStmt):
         if s.expr is not None:
-            acc, lexpr = pstr_expr(s.expr, state, hint)
+            acc, lexpr = pstr_expr(s.expr, st, hint)
             return acc + _in(st, [f"return {lexpr}"] )
         else:
             return _in(st, ["return"])
     else:
         assert_never(s)
 
-def pstr_tracker(t:Builder, state:Optional[PStrState]=None) -> List[str]:
+def pstr_builder(t:Builder, state:Optional[PStrState]=None) -> List[str]:
     st = state if state is not None else PStrState()
     def _hp(poi:POI) -> List[str]:
         for poic in t.pois:
@@ -170,14 +173,15 @@ def pprint(p:Union[Builder, Program, Stmt, Expr]) -> None:
     FIXME: Find out how not to repeat Stmt and Expr definitions
     """
     if isinstance(p, Builder):
-        print('\n'.join(pstr_tracker(p)))
+        print('\n'.join(pstr_builder(p)))
     elif isinstance(p, Program):
         print('\n'.join(pstr_prog(p)))
-    elif isinstance(p, (AssignStmt, WhileLoopStmt, FDefStmt, RetStmt,
-                        ForLoopStmt)):
+    elif isinstance(p, (AssignStmt, WhileLoopStmt, FDefStmt, RetStmt)):
         print('\n'.join(pstr_stmt(p)))
-    elif isinstance(p, (VRefExpr, FCallExpr, ConstExpr, CondExpr)):
-        print(pstr_expr(p))
+    elif isinstance(p, (VRefExpr, FCallExpr, ConstExpr, CondExpr, ForLoopExpr)):
+        stmts,expr = pstr_expr(p)
+        print('\n'.join(stmts))
+        print(f"## {expr} ##")
     else:
         assert_never(p)
 
