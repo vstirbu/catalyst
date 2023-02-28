@@ -30,14 +30,14 @@ jobs:
       uses: actions/cache@v3
       with:
         path:  llvm-build
-        key: ${{ runner.os }}-llvm-${{ steps.llvm-hash.outputs.llvm-hash }}-generic-build
+        key: ${{ runner.os }}-llvm-generic-build-${{ steps.llvm-hash.outputs.llvm-hash }}
 
     - name: Cache LLVM Source
       id: cache-llvm-source
       uses: actions/cache@v3
       with:
         path:  mlir/llvm-project
-        key: Linux-llvm-${{ steps.llvm-hash.outputs.llvm-hash }}-default-source
+        key: Linux-llvm-default-source-${{ steps.llvm-hash.outputs.llvm-hash }}
         enableCrossOsArchive: True
 
     - name: Set Ownership in Container
@@ -80,7 +80,7 @@ jobs:
       uses: actions/cache@v3
       with:
         path:  mhlo-build
-        key: ${{ runner.os }}-mhlo-${{ steps.mhlo-hash.outputs.mhlo-hash }}-generic-build
+        key: ${{ runner.os }}-mhlo-generic-build-${{ steps.mhlo-hash.outputs.mhlo-hash }}
 
     - name: Clone MHLO Submodule
       if:  |
@@ -165,7 +165,7 @@ jobs:
       uses: actions/cache@v3
       with:
         path: mlir/llvm-project
-        key: Linux-llvm-${{ steps.llvm-hash.outputs.llvm-hash }}-default-source
+        key: Linux-llvm-default-source-${{ steps.llvm-hash.outputs.llvm-hash }}
         enableCrossOsArchive: True
         fail-on-cache-miss: True
 
@@ -174,7 +174,7 @@ jobs:
       uses: actions/cache@v3
       with:
         path:  llvm-build
-        key: ${{ runner.os }}-llvm-${{ steps.llvm-hash.outputs.llvm-hash }}-generic-build
+        key: ${{ runner.os }}-llvm-generic-build-${{ steps.llvm-hash.outputs.llvm-hash }}
         fail-on-cache-miss: True
 
     - name: Get MHLO Version
@@ -186,7 +186,7 @@ jobs:
       uses: actions/cache@v3
       with:
         path:  mhlo-build
-        key: ${{ runner.os }}-mhlo-${{ steps.mhlo-hash.outputs.mhlo-hash }}-generic-build
+        key: ${{ runner.os }}-mhlo-generic-build-${{ steps.mhlo-hash.outputs.mhlo-hash }}
         fail-on-cache-miss: True
 
     - name: Download QIR stdlib Artifact
