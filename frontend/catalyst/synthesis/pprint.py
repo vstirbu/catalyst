@@ -7,7 +7,7 @@ from typing import Tuple, Union, List, Optional, NoReturn, Callable
 from dataclasses import dataclass
 
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt,
-                      CondExpr, WhileLoopStmt, FDefStmt, Program, RetStmt,
+                      CondExpr, WhileLoopExpr, FDefStmt, Program, RetStmt,
                       ConstExpr, NoneExpr, POI, ForLoopExpr, ControlFlowStyle,
                       assert_never)
 
@@ -30,9 +30,9 @@ def _in(st, lines):
     """ Indent """
     return [' '*(st.indent*TABSTOP) + line for line in lines]
 
-def _ne(st, l:list)->list:
+def _ne(st, ls:list)->list:
     """ Check non-empty """
-    return sum(l,[]) if len(l)>0 else [' '*((st.indent+1)*TABSTOP) + "pass"]
+    return sum(ls,[]) if len(ls)>0 else [' '*((st.indent+1)*TABSTOP) + "pass"]
 
 def _hi(st, hint, poi):
     """ Print a hint """
@@ -52,12 +52,13 @@ def pstr_expr(expr:Expr,
     e = expr
     st = state if state else PStrState()
     if isinstance(e, FCallExpr):
-        accs,acce = list(),list()
+        acc_name,name = pstr_expr(e.expr)
+        acc_body,args = list(),list()
         for ea in e.args:
             lss,le = pstr_expr(ea, state, hint)
             accs.extend(lss)
-            acce.append(le)
-        return accs,f"{e.fname.val}({', '.join(acce)})"
+            args.append(le)
+        return acc_name + acc_body, f"{name}({', '.join(args)})"
     elif isinstance(e, CondExpr):
         if e.style == ControlFlowStyle.Python:
             assert_never(e.style)
@@ -76,7 +77,7 @@ def pstr_expr(expr:Expr,
                 _ne(st, [pstr_stmt(s, st1, hint) for s in e.falseBranch.stmts] +
                         [pstr_stmt(RetStmt(e.falseBranch.expr), st1, hint)]) +
                 _hi(st, hint, e.falseBranch)) if e.falseBranch else []
-            return acc + true_part + false_part, f"{nmcond}()"
+            return acc + true_part + false_part, f"{nmcond}"
         else:
             assert_never(e.style)
     elif isinstance(e, ForLoopExpr):
@@ -90,9 +91,29 @@ def pstr_expr(expr:Expr,
                          f"def {nforloop}({e.loopvar.val}):"]) +
                 _ne(st, [pstr_stmt(s, st1, hint) for s in e.body.stmts] +
                         [pstr_stmt(RetStmt(e.body.expr), st1, hint)]) +
-                _hi(st, hint, e.body), f"{nforloop}()")
+                _hi(st, hint, e.body), f"{nforloop}")
         else:
             assert_never(e.style)
+    elif isinstance(e, WhileLoopExpr):
+        acc, lexpr = pstr_expr(e.cond, st, hint)
+        if e.style == ControlFlowStyle.Catalyst:
+            st1, nwhileloop = st.tabulate().issue("whileloop")
+            return (
+                acc +
+                _in(st, [f"@while_loop(lambda {e.loopvar.val}:{lexpr})",
+                         f"def {nwhileloop}({e.loopvar.val}):"]) +
+                _ne(st, [pstr_stmt(s, st1, hint) for s in e.body.stmts] +
+                        [pstr_stmt(RetStmt(e.body.expr), st1, hint)]) +
+                _hi(st, hint, e.body), f"{nwhileloop}")
+        # elif e.style == ControlFlowStyle.Python:
+        #     st1 = st.tabulate().issue("whileloop")
+        #     return (
+        #         acc +
+        #         _in(st, [f"while {lexpr}:"]) +
+        #         _ne(st, [pstr_stmt(s, st1, hint) for s in s.body.stmts]) +
+        #         _hi(st, hint, s.body))
+        else:
+            assert_never(s.style)
     elif isinstance(e, NoneExpr):
         return [],"None"
     elif isinstance(e, VRefExpr):
@@ -115,7 +136,6 @@ def pstr_stmt(s:Stmt,
               state:Optional[PStrState]=None,
               hint:Optional[HintPrinter]=None) -> List[str]:
     st:PStrState = state if state is not None else PStrState()
-    indent = st.indent
 
     if False:
         pass
@@ -125,17 +145,6 @@ def pstr_stmt(s:Stmt,
             return acc + _in(st, [f"{s.vname.val} = {lexpr}"])
         else:
             return acc + _in(st, [lexpr])
-    elif isinstance(s, WhileLoopStmt):
-        acc, lexpr = pstr_expr(s.cond, st, hint)
-        if s.style == ControlFlowStyle.Python:
-            st1 = st.tabulate()
-            return (
-                acc +
-                _in(st, [f"while {lexpr}:"]) +
-                _ne(st, [pstr_stmt(s, st1, hint) for s in s.body.stmts]) +
-                _hi(st, hint, s.body))
-        else:
-            assert_never(s.style)
     elif isinstance(s, FDefStmt):
         st1 = st.tabulate()
         qdevice = s.qdevice if s.qdevice is not None else DEFAULT_QDEVICE
@@ -176,9 +185,9 @@ def pprint(p:Union[Builder, Program, Stmt, Expr]) -> None:
         print('\n'.join(pstr_builder(p)))
     elif isinstance(p, Program):
         print('\n'.join(pstr_prog(p)))
-    elif isinstance(p, (AssignStmt, WhileLoopStmt, FDefStmt, RetStmt)):
+    elif isinstance(p, (AssignStmt, FDefStmt, RetStmt)):
         print('\n'.join(pstr_stmt(p)))
-    elif isinstance(p, (VRefExpr, FCallExpr, ConstExpr, CondExpr, ForLoopExpr)):
+    elif isinstance(p, (VRefExpr, FCallExpr, ConstExpr, CondExpr, ForLoopExpr, WhileLoopExpr)):
         stmts,expr = pstr_expr(p)
         print('\n'.join(stmts))
         print(f"## {expr} ##")

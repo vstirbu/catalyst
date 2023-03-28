@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from copy import deepcopy
 
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt,
-                      CondExpr, WhileLoopStmt, FDefStmt, Program, RetStmt,
+                      CondExpr, WhileLoopExpr, FDefStmt, Program, RetStmt,
                       ConstExpr, POI, ForLoopExpr,
                       ControlFlowStyle as CFS, assert_never)
 
@@ -91,6 +91,11 @@ def contextualize_expr(e:Expr, ctx:Optional[Context]=None) -> List[PWC]:
         ctx1 = Context(parent=ctx, vscope=set([e.loopvar]))
         pois_scan_inplace(e.body.stmts, ctx1, acc)
         acc.append(PWC(e.body, ctx1))
+    elif isinstance(e, WhileLoopExpr):
+        acc.extend(contextualize_expr(e.cond, ctx))
+        ctx1 = Context(parent=ctx)
+        pois_scan_inplace(e.body.stmts, ctx1, acc)
+        acc.append(PWC(e.body, ctx1))
     else:
         pass
     return acc
@@ -100,11 +105,11 @@ def contextualize(s:Stmt, ctx:Optional[Context]=None) -> List[PWC]:
     acc:List[PWC] = list()
     if isinstance(s, AssignStmt):
         acc.extend(contextualize_expr(s.expr, ctx))
-    elif isinstance(s, WhileLoopStmt):
-        acc.extend(contextualize_expr(s.cond, ctx))
-        ctx1 = Context(parent=ctx)
-        pois_scan_inplace(s.body.stmts, ctx1, acc)
-        acc.append(PWC(s.body, ctx1))
+    # elif isinstance(s, WhileLoopStmt):
+    #     acc.extend(contextualize_expr(s.cond, ctx))
+    #     ctx1 = Context(parent=ctx)
+    #     pois_scan_inplace(s.body.stmts, ctx1, acc)
+    #     acc.append(PWC(s.body, ctx1))
     # elif isinstance(s, ForLoopStmt):
     #     acc.extend(contextualize_expr(s.lbound, ctx))
     #     acc.extend(contextualize_expr(s.ubound, ctx))

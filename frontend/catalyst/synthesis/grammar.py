@@ -15,7 +15,7 @@ class POI:
     expr:"Expr"
     def __init__(self, stmts=None, expr=None):
         self.stmts = stmts if stmts is not None else []
-        self.expr = expr if expr is not None else NoneExpr
+        self.expr = expr if expr is not None else NoneExpr()
 
 
 @dataclass(frozen=True)
@@ -35,13 +35,7 @@ class FName:
         return self.val < other.val
 
 Expr = Union["VRefExpr","FCallExpr", "ConstExpr", "NoneExpr", "CondExpr",
-             "ForLoopExpr" ]
-
-@dataclass(frozen=True)
-class FCallExpr:
-    """ Expression - a function call """
-    fname: FName
-    args: List[Expr]
+             "ForLoopExpr", "WhileLoopExpr" ]
 
 @dataclass(frozen=True)
 class VRefExpr:
@@ -76,22 +70,28 @@ class CondExpr:
 
 @dataclass
 class ForLoopExpr:
-    """ Expression - while loop """
+    """ Expression - for loop """
     loopvar: VName
     lbound: Expr
     ubound: Expr
     body: POI
     style: ControlFlowStyle
 
-Stmt = Union["AssignStmt", "FDefStmt", "RetStmt",
-             "WhileLoopStmt"]
-
 @dataclass
-class WhileLoopStmt:
-    """ Statement - while loop """
+class WhileLoopExpr:
+    """ Expression - while loop """
+    loopvar: VName
     cond: Expr
     body: POI
     style: ControlFlowStyle
+
+@dataclass(frozen=True)
+class FCallExpr:
+    """ Expression - calling a callable """
+    expr: Union[FName, CondExpr, ForLoopExpr, WhileLoopExpr]
+    args: List[Expr]
+
+Stmt = Union["AssignStmt", "FDefStmt", "RetStmt"]
 
 @dataclass
 class AssignStmt:
