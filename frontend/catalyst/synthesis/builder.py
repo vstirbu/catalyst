@@ -81,21 +81,25 @@ def contextualize_expr(e:Expr, ctx:Optional[Context]=None) -> List[PWC]:
         ctx1 = Context(parent=ctx)
         pois_scan_inplace(e.trueBranch.stmts, ctx1, acc)
         acc.append(POIWithContext(e.trueBranch, ctx1))
+        acc.extend(contextualize_expr(e.trueBranch.expr, ctx1))
         if e.falseBranch is not None:
             ctx2 = Context(parent=ctx)
             pois_scan_inplace(e.falseBranch.stmts, ctx2, acc)
             acc.append(POIWithContext(e.falseBranch, ctx2))
+            acc.extend(contextualize_expr(e.falseBranch.expr, ctx2))
     elif isinstance(e, ForLoopExpr):
         acc.extend(contextualize_expr(e.lbound, ctx))
         acc.extend(contextualize_expr(e.ubound, ctx))
         ctx1 = Context(parent=ctx, vscope=set([e.loopvar]))
         pois_scan_inplace(e.body.stmts, ctx1, acc)
         acc.append(PWC(e.body, ctx1))
+        acc.extend(contextualize_expr(e.body.expr, ctx1))
     elif isinstance(e, WhileLoopExpr):
         acc.extend(contextualize_expr(e.cond, ctx))
-        ctx1 = Context(parent=ctx)
+        ctx1 = Context(parent=ctx, vscope=set([e.loopvar]))
         pois_scan_inplace(e.body.stmts, ctx1, acc)
         acc.append(PWC(e.body, ctx1))
+        acc.extend(contextualize_expr(e.body.expr, ctx1))
     else:
         pass
     return acc
@@ -105,26 +109,9 @@ def contextualize(s:Stmt, ctx:Optional[Context]=None) -> List[PWC]:
     acc:List[PWC] = list()
     if isinstance(s, AssignStmt):
         acc.extend(contextualize_expr(s.expr, ctx))
-    # elif isinstance(s, WhileLoopStmt):
-    #     acc.extend(contextualize_expr(s.cond, ctx))
-    #     ctx1 = Context(parent=ctx)
-    #     pois_scan_inplace(s.body.stmts, ctx1, acc)
-    #     acc.append(PWC(s.body, ctx1))
-    # elif isinstance(s, ForLoopStmt):
-    #     acc.extend(contextualize_expr(s.lbound, ctx))
-    #     acc.extend(contextualize_expr(s.ubound, ctx))
-    #     ctx1 = Context(parent=ctx, vscope=set([s.loopvar]))
-    #     pois_scan_inplace(s.body.stmts, ctx1, acc)
-    #     acc.append(PWC(s.body, ctx1))
-    # elif isinstance(s, CondStmt):
-    #     ctx1 = Context(parent=ctx)
-    #     pois_scan_inplace(s.trueBranch.stmts, ctx1, acc)
-    #     acc.append(POIWithContext(s.trueBranch, ctx1))
-    #     if s.falseBranch is not None:
-    #         ctx2 = Context(parent=ctx)
-    #         pois_scan_inplace(s.falseBranch.stmts, ctx2, acc)
-    #         acc.append(POIWithContext(s.falseBranch, ctx2))
-    #     return acc
+    elif isinstance(s, RetStmt):
+        if s.expr is not None:
+            acc.extend(contextualize_expr(s.expr, ctx))
     elif isinstance(s, FDefStmt):
         ctx1 = Context(set(s.args),parent=ctx)
         pois_scan_inplace(s.body.stmts, ctx1, acc)

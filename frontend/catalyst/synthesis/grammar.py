@@ -2,9 +2,10 @@
 language. The `Program` dataclass is supposed to be top-level node of the AST.
 """
 
-from typing import (Any, List, Optional, Dict, Union, NoReturn)
+from typing import (Any, List, Tuple, Optional, Dict, Union, NoReturn)
 from dataclasses import dataclass
 from enum import Enum
+from jax import Array as JaxArray
 
 
 @dataclass(unsafe_hash=True)
@@ -16,6 +17,10 @@ class POI:
     def __init__(self, stmts=None, expr=None):
         self.stmts = stmts if stmts is not None else []
         self.expr = expr if expr is not None else NoneExpr()
+
+    @classmethod
+    def fromExpr(cls, e:"Expr") -> "POI":
+        return POI([],e)
 
 
 @dataclass(frozen=True)
@@ -37,15 +42,20 @@ class FName:
 Expr = Union["VRefExpr","FCallExpr", "ConstExpr", "NoneExpr", "CondExpr",
              "ForLoopExpr", "WhileLoopExpr" ]
 
+def isinstance_expr(e) -> bool:
+    """Workaround for a TypeError, which is probably a Python bug."""
+    return isinstance(e, (VRefExpr,FCallExpr, ConstExpr, NoneExpr, CondExpr,
+                          ForLoopExpr, WhileLoopExpr))
+
 @dataclass(frozen=True)
 class VRefExpr:
     """ Expression - reference to a variable """
-    vname: VName
+    vname: Union[FName, VName]
 
 @dataclass(frozen=True)
 class ConstExpr:
     """ Expression - constant """
-    val: Union[bool, int, float, complex]
+    val: Union[bool, int, float, complex, JaxArray]
 
 trueExpr = ConstExpr(True)
 falseExpr = ConstExpr(False)
@@ -88,7 +98,7 @@ class WhileLoopExpr:
 @dataclass(frozen=True)
 class FCallExpr:
     """ Expression - calling a callable """
-    expr: Union[FName, CondExpr, ForLoopExpr, WhileLoopExpr]
+    expr: Union[VRefExpr, CondExpr, ForLoopExpr, WhileLoopExpr]
     args: List[Expr]
 
 Stmt = Union["AssignStmt", "FDefStmt", "RetStmt"]
@@ -107,6 +117,7 @@ class FDefStmt:
     body: POI
     qwires: Optional[int] = None
     qdevice: Optional[str] = None
+    qjit: bool = False
 
 @dataclass
 class RetStmt:
@@ -120,4 +131,21 @@ Program = FDefStmt
 def assert_never(x: Any) -> NoReturn:
     raise AssertionError("Unhandled type: {}".format(type(x).__name__))
 
+def signature(x: Union[FDefStmt, ForLoopExpr, WhileLoopExpr, CondExpr]
+              ) -> Optional[Tuple[str,List[str]]]:
+    """Return callable expression signature: the "names" list of arguments and the return "type", or
+    None for non-callable expressions.
+    Currently, we don't use true typing system and return more or less random names here.
+    For `FDefStmt` the calculation is straightforward.  Note that loops and conditionals are also
+    callables. """
+    if isinstance(x, FDefStmt):
+        return (x.fname, x.args)
+    elif isinstance(x, ForLoopExpr):
+        return ("forloop", [x.loopvar])
+    elif isinstance(x, WhileLoopExpr):
+        return ("whileloop", [x.loopvar])
+    elif isinstance(x, CondExpr):
+        return ("cond", [])
+    else:
+        return None
 

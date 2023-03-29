@@ -4,12 +4,15 @@ TODO: Decide on https://peps.python.org/pep-0634/
 """
 
 from typing import Tuple, Union, List, Optional, NoReturn, Callable
+from itertools import chain
+
 from dataclasses import dataclass
+from jax import Array as JaxArray
 
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt,
                       CondExpr, WhileLoopExpr, FDefStmt, Program, RetStmt,
                       ConstExpr, NoneExpr, POI, ForLoopExpr, ControlFlowStyle,
-                      assert_never)
+                      assert_never, isinstance_expr)
 
 from .builder import (Builder)
 
@@ -52,11 +55,11 @@ def pstr_expr(expr:Expr,
     e = expr
     st = state if state else PStrState()
     if isinstance(e, FCallExpr):
-        acc_name,name = pstr_expr(e.expr)
+        acc_name,name = pstr_expr(e.expr, state, hint)
         acc_body,args = list(),list()
         for ea in e.args:
             lss,le = pstr_expr(ea, state, hint)
-            accs.extend(lss)
+            acc_body.extend(lss)
             args.append(le)
         return acc_name + acc_body, f"{name}({', '.join(args)})"
     elif isinstance(e, CondExpr):
@@ -87,7 +90,7 @@ def pstr_expr(expr:Expr,
             st1, nforloop = st.tabulate().issue("forloop")
             return (
                 accL + accU +
-                _in(st, [f"@fori_loop({lexprL},{lexprU},1)",
+                _in(st, [f"@for_loop({lexprL},{lexprU},1)",
                          f"def {nforloop}({e.loopvar.val}):"]) +
                 _ne(st, [pstr_stmt(s, st1, hint) for s in e.body.stmts] +
                         [pstr_stmt(RetStmt(e.body.expr), st1, hint)]) +
@@ -127,6 +130,8 @@ def pstr_expr(expr:Expr,
             return [],f"float({e.val})"
         elif isinstance(e.val, complex):
             return [],f"complex({e.val})"
+        elif isinstance(e.val, JaxArray):
+            return [],f"Array({e.val.tolist()},dtype={str(e.val.dtype)})"
         else:
             assert_never(e.val)
     else:
@@ -148,12 +153,13 @@ def pstr_stmt(s:Stmt,
     elif isinstance(s, FDefStmt):
         st1 = st.tabulate()
         qdevice = s.qdevice if s.qdevice is not None else DEFAULT_QDEVICE
+        qjit = ["@qjit"] if s.qjit else []
         qfunc = [f"@qml.qnode(qml.device(\"{qdevice}\", wires={s.qwires}))"] \
                 if s.qwires is not None else []
         return (
-            _in(st, qfunc +
+            _in(st, qjit + qfunc +
                 [f"def {s.fname.val}({', '.join([a.val for a in s.args])}):"]) +
-            _ne(st, [pstr_stmt(s, st1, hint) for s in s.body.stmts]) +
+            _ne(st, [pstr_stmt(s, st1, hint) for s in chain(s.body.stmts, [RetStmt(s.body.expr)])]) +
             _hi(st, hint, s.body))
     elif isinstance(s, RetStmt):
         if s.expr is not None:
@@ -187,7 +193,7 @@ def pprint(p:Union[Builder, Program, Stmt, Expr]) -> None:
         print('\n'.join(pstr_prog(p)))
     elif isinstance(p, (AssignStmt, FDefStmt, RetStmt)):
         print('\n'.join(pstr_stmt(p)))
-    elif isinstance(p, (VRefExpr, FCallExpr, ConstExpr, CondExpr, ForLoopExpr, WhileLoopExpr)):
+    elif isinstance_expr(p):
         stmts,expr = pstr_expr(p)
         print('\n'.join(stmts))
         print(f"## {expr} ##")
