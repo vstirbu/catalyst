@@ -2,7 +2,7 @@
 language. The `Program` dataclass is supposed to be top-level node of the AST.
 """
 
-from typing import (Any, List, Tuple, Optional, Dict, Union, NoReturn)
+from typing import (Any, List, Tuple, Optional, Dict, Union, NoReturn, Set)
 from dataclasses import dataclass
 from enum import Enum
 from jax import Array as JaxArray
@@ -42,7 +42,7 @@ class FName:
 Expr = Union["VRefExpr","FCallExpr", "ConstExpr", "NoneExpr", "CondExpr",
              "ForLoopExpr", "WhileLoopExpr" ]
 
-def isinstance_expr(e) -> bool:
+def isinstance_expr(e:Any) -> bool:
     """Workaround for a TypeError, which is probably a Python bug."""
     return isinstance(e, (VRefExpr,FCallExpr, ConstExpr, NoneExpr, CondExpr,
                           ForLoopExpr, WhileLoopExpr))
@@ -103,6 +103,10 @@ class FCallExpr:
 
 Stmt = Union["AssignStmt", "FDefStmt", "RetStmt"]
 
+def isinstance_stmt(s:Any) -> bool:
+    """Workaround for a TypeError, which is probably a Python bug."""
+    return isinstance(s, (AssignStmt, FDefStmt, RetStmt))
+
 @dataclass
 class AssignStmt:
     """ Statement - variable assignemnt or a function call """
@@ -131,6 +135,7 @@ Program = FDefStmt
 def assert_never(x: Any) -> NoReturn:
     raise AssertionError("Unhandled type: {}".format(type(x).__name__))
 
+
 def signature(x: Union[FDefStmt, ForLoopExpr, WhileLoopExpr, CondExpr]
               ) -> Optional[Tuple[str,List[str]]]:
     """Return callable expression signature: the "names" list of arguments and the return "type", or
@@ -148,4 +153,14 @@ def signature(x: Union[FDefStmt, ForLoopExpr, WhileLoopExpr, CondExpr]
         return ("cond", [])
     else:
         return None
+
+
+def innerdefs1(e: Expr) -> Set[VRefExpr]:
+    """ Return immediate inner variables """
+    if isinstance(e, ForLoopExpr):
+        return set([VRefExpr(e.loopvar)])
+    elif isinstance(e, WhileLoopExpr):
+        return set([VRefExpr(e.loopvar)])
+    else:
+        return set()
 

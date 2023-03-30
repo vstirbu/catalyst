@@ -12,7 +12,7 @@ from jax import Array as JaxArray
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt,
                       CondExpr, WhileLoopExpr, FDefStmt, Program, RetStmt,
                       ConstExpr, NoneExpr, POI, ForLoopExpr, ControlFlowStyle,
-                      assert_never, isinstance_expr)
+                      assert_never, isinstance_expr, isinstance_stmt)
 
 from .builder import (Builder)
 
@@ -42,7 +42,7 @@ def _hi(st, hint, poi):
     hlines = hint(poi) if hint else []
     if hlines:
         hlines = [f"poi {id(poi)}"] + hlines
-    return [' '*(st.indent+1)*TABSTOP + "# " + h for h in hlines]
+    return [' '*st.indent*TABSTOP + "# " + h for h in hlines]
 
 
 TABSTOP:int = 4
@@ -73,13 +73,13 @@ def pstr_expr(expr:Expr,
                          f"def {nmcond}():"]) +
                 _ne(st, [pstr_stmt(s, st1, hint) for s in e.trueBranch.stmts] +
                         [pstr_stmt(RetStmt(e.trueBranch.expr), st1, hint)]) +
-                _hi(st, hint, e.trueBranch))
+                _hi(st1, hint, e.trueBranch))
             false_part = (
                 _in(st, [f"@{nmcond}.otherwise",
                          f"def {nmcond}():"]) +
                 _ne(st, [pstr_stmt(s, st1, hint) for s in e.falseBranch.stmts] +
                         [pstr_stmt(RetStmt(e.falseBranch.expr), st1, hint)]) +
-                _hi(st, hint, e.falseBranch)) if e.falseBranch else []
+                _hi(st1, hint, e.falseBranch)) if e.falseBranch else []
             return acc + true_part + false_part, f"{nmcond}"
         else:
             assert_never(e.style)
@@ -94,7 +94,7 @@ def pstr_expr(expr:Expr,
                          f"def {nforloop}({e.loopvar.val}):"]) +
                 _ne(st, [pstr_stmt(s, st1, hint) for s in e.body.stmts] +
                         [pstr_stmt(RetStmt(e.body.expr), st1, hint)]) +
-                _hi(st, hint, e.body), f"{nforloop}")
+                _hi(st1, hint, e.body), f"{nforloop}")
         else:
             assert_never(e.style)
     elif isinstance(e, WhileLoopExpr):
@@ -107,7 +107,7 @@ def pstr_expr(expr:Expr,
                          f"def {nwhileloop}({e.loopvar.val}):"]) +
                 _ne(st, [pstr_stmt(s, st1, hint) for s in e.body.stmts] +
                         [pstr_stmt(RetStmt(e.body.expr), st1, hint)]) +
-                _hi(st, hint, e.body), f"{nwhileloop}")
+                _hi(st1, hint, e.body), f"{nwhileloop}")
         # elif e.style == ControlFlowStyle.Python:
         #     st1 = st.tabulate().issue("whileloop")
         #     return (
@@ -160,7 +160,7 @@ def pstr_stmt(s:Stmt,
             _in(st, qjit + qfunc +
                 [f"def {s.fname.val}({', '.join([a.val for a in s.args])}):"]) +
             _ne(st, [pstr_stmt(s, st1, hint) for s in chain(s.body.stmts, [RetStmt(s.body.expr)])]) +
-            _hi(st, hint, s.body))
+            _hi(st1, hint, s.body))
     elif isinstance(s, RetStmt):
         if s.expr is not None:
             acc, lexpr = pstr_expr(s.expr, st, hint)
@@ -170,6 +170,15 @@ def pstr_stmt(s:Stmt,
     else:
         assert_never(s)
 
+def pstr_poi(p:POI, state:Optional[PStrState]=None, hint=None) -> List[str]:
+    st = state if state is not None else PStrState()
+    lines, e = pstr_expr(p.expr, st, hint)
+    return (sum(([pstr_stmt(s, st, hint)] for s in p.stmts), []) +
+            lines +
+            _hi(st, hint, p) +
+            _in(st, [f"## {e} ##"]))
+
+
 def pstr_builder(t:Builder, state:Optional[PStrState]=None) -> List[str]:
     st = state if state is not None else PStrState()
     def _hp(poi:POI) -> List[str]:
@@ -177,7 +186,7 @@ def pstr_builder(t:Builder, state:Optional[PStrState]=None) -> List[str]:
             if poi is poic.poi:
                 return [', '.join(v.val for v in sorted(poic.ctx.get_vscope()))]
         return []
-    return pstr_stmt(t.stmt, st, _hp)
+    return pstr_poi(t.root, st, _hp)
 
 def pstr_prog(p:Program, state:Optional[PStrState]=None) -> List[str]:
     """ Pretty-print the program """
@@ -191,7 +200,7 @@ def pprint(p:Union[Builder, Program, Stmt, Expr]) -> None:
         print('\n'.join(pstr_builder(p)))
     elif isinstance(p, Program):
         print('\n'.join(pstr_prog(p)))
-    elif isinstance(p, (AssignStmt, FDefStmt, RetStmt)):
+    elif isinstance_stmt(p):
         print('\n'.join(pstr_stmt(p)))
     elif isinstance_expr(p):
         stmts,expr = pstr_expr(p)
