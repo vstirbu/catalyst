@@ -18,6 +18,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -59,6 +60,7 @@ struct GradientLoweringPass : public OperationPass<ModuleOp> {
         registry.insert<tensor::TensorDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<bufferization::BufferizationDialect>();
+        registry.insert<LLVM::LLVMDialect>();
     }
 
     void runOnOperation() final

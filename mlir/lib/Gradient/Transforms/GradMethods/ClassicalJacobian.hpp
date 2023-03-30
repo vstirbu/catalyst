@@ -17,6 +17,8 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
 
+#include "Gradient/IR/GradientOps.h"
+
 using namespace mlir;
 
 namespace catalyst {
@@ -25,6 +27,9 @@ namespace gradient {
 func::FuncOp genParamCountFunction(PatternRewriter &rewriter, Location loc, func::FuncOp callee);
 
 func::FuncOp genArgMapFunction(PatternRewriter &rewriter, Location loc, func::FuncOp callee);
+
+func::FuncOp genEnzymeWrapperFunction(PatternRewriter &rewriter, Location loc, GradOp gradOp,
+                                      func::FuncOp argMapFn);
 
 } // namespace gradient
 } // namespace catalyst

@@ -71,7 +71,7 @@ quantum_compilation_pass_pipeline = [
 ]
 
 bufferization_pass_pipeline = [
-    "--inline",
+    # "--inline",
     "--gradient-bufferize",
     "--scf-bufferize",
     "--convert-tensor-to-linalg",  # tensor.pad

@@ -18,9 +18,11 @@
 #include <string>
 #include <vector>
 
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 
 #include "Quantum/IR/QuantumOps.h"
@@ -168,6 +170,72 @@ func::FuncOp genArgMapFunction(PatternRewriter &rewriter, Location loc, func::Fu
     }
 
     return argMapFn;
+}
+
+/// Generate an mlir function to wrap an existing function into a return-by-pointer style function.
+///
+/// .
+///
+func::FuncOp genEnzymeWrapperFunction(PatternRewriter &rewriter, Location loc, GradOp gradOp,
+                                      func::FuncOp argMapFn)
+{
+    MLIRContext *ctx = rewriter.getContext();
+    LLVMTypeConverter typeConverter(ctx);
+
+    // Define the properties of the enzyme wrapper function.
+    std::string fnName = gradOp.getCallee().str() + ".enzyme_wrapper";
+    SmallVector<Type> argTypes(argMapFn.getArgumentTypes().begin(),
+                               argMapFn.getArgumentTypes().end());
+
+    SmallVector<Type> tensorFreeResultTypes, llvmResultTypes, llvmResultPointerTypes;
+    for (Type type : argMapFn.getResultTypes()) {
+        if (auto t = type.dyn_cast<TensorType>())
+            type = MemRefType::get(t.getShape(), t.getElementType());
+        tensorFreeResultTypes.push_back(type);
+    }
+    if (failed(typeConverter.convertTypes(tensorFreeResultTypes, llvmResultTypes)))
+        emitError(loc, "Could not convert argmap result types to LLVM types.");
+    for (Type type : llvmResultTypes) {
+        llvmResultPointerTypes.push_back(LLVM::LLVMPointerType::get(type));
+    }
+    argTypes.insert(argTypes.end(), llvmResultPointerTypes.begin(), llvmResultPointerTypes.end());
+
+    FunctionType fnType = rewriter.getFunctionType(argTypes, {});
+    StringAttr visibility = rewriter.getStringAttr("private");
+
+    func::FuncOp enzymeFn =
+        SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(gradOp, rewriter.getStringAttr(fnName));
+    if (!enzymeFn) {
+        PatternRewriter::InsertionGuard insertGuard(rewriter);
+        rewriter.setInsertionPointAfter(argMapFn);
+
+        enzymeFn = rewriter.create<func::FuncOp>(loc, fnName, fnType, visibility);
+        Block *entryBlock = enzymeFn.addEntryBlock();
+        rewriter.setInsertionPointToStart(entryBlock);
+
+        ValueRange callArgs = enzymeFn.getArguments().take_front(argMapFn.getNumArguments());
+        ValueRange results = rewriter.create<func::CallOp>(loc, argMapFn, callArgs).getResults();
+
+        ValueRange resArgs = enzymeFn.getArguments().drop_front(argMapFn.getNumArguments());
+
+        SmallVector<Value> tensorFreeResults;
+        for (auto [result, memrefType] : llvm::zip(results, tensorFreeResultTypes)) {
+            if (result.getType().isa<TensorType>())
+                result = rewriter.create<bufferization::ToMemrefOp>(loc, memrefType, result);
+            tensorFreeResults.push_back(result);
+        }
+
+        ValueRange llvmResults =
+            rewriter.create<UnrealizedConversionCastOp>(loc, llvmResultTypes, tensorFreeResults)
+                .getResults();
+        for (auto [result, resArg] : llvm::zip(llvmResults, resArgs)) {
+            rewriter.create<LLVM::StoreOp>(loc, result, resArg);
+        }
+
+        rewriter.create<func::ReturnOp>(loc);
+    }
+
+    return enzymeFn;
 }
 
 } // namespace gradient
