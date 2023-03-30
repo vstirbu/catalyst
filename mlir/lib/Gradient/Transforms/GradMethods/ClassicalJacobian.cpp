@@ -238,5 +238,51 @@ func::FuncOp genEnzymeWrapperFunction(PatternRewriter &rewriter, Location loc, G
     return enzymeFn;
 }
 
+/// Generate an mlir function to compute the classical Jacobian via Enzyme.
+///
+/// .
+///
+func::FuncOp genBackpropFunction(PatternRewriter &rewriter, Location loc, GradOp gradOp,
+                                 func::FuncOp wrapperFn)
+{
+    MLIRContext *ctx = rewriter.getContext();
+    LLVMTypeConverter typeConverter(ctx);
+
+    // Define the properties of the classical Jacobian function.
+    std::string fnName = gradOp.getCallee().str() + ".backprop";
+
+    StringAttr visibility = rewriter.getStringAttr("private");
+
+    func::FuncOp autoDiffFn =
+        SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(gradOp, rewriter.getStringAttr(fnName));
+    if (!autoDiffFn) {
+        PatternRewriter::InsertionGuard insertGuard(rewriter);
+        rewriter.setInsertionPointToStart(gradOp->getParentOfType<mlir::ModuleOp>().getBody());
+
+        StringRef name = "__enzymne_autodiff";
+        Type resType = LLVM::LLVMVoidType::get(ctx);
+        Type calleeType =
+            LLVM::LLVMPointerType::get(typeConverter.convertType(wrapperFn.getFunctionType()));
+        Type type = LLVM::LLVMFunctionType::get(resType, {calleeType}, /*isVarArg=*/true);
+
+        autoDiffFn = rewriter.create<func::FuncOp>(loc, name, type, visibility);
+    }
+
+    func::FuncOp backpropFn =
+        SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(gradOp, rewriter.getStringAttr(fnName));
+    if (!backpropFn) {
+        PatternRewriter::InsertionGuard insertGuard(rewriter);
+        rewriter.setInsertionPointAfter(wrapperFn);
+
+        backpropFn = rewriter.create<func::FuncOp>(loc, fnName, fnType, visibility);
+        Block *entryBlock = backpropFn.addEntryBlock();
+        rewriter.setInsertionPointToStart(entryBlock);
+
+        rewriter.create<func::ReturnOp>(loc);
+    }
+
+    return backpropFn;
+}
+
 } // namespace gradient
 } // namespace catalyst
