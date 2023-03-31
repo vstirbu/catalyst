@@ -272,45 +272,85 @@ func::FuncOp genEnzymeWrapperFunction(PatternRewriter &rewriter, Location loc, G
 /// .
 ///
 func::FuncOp genBackpropFunction(PatternRewriter &rewriter, Location loc, GradOp gradOp,
-                                 func::FuncOp wrapperFn)
+                                 func::FuncOp callee)
 {
     MLIRContext *ctx = rewriter.getContext();
-    LLVMTypeConverter typeConverter(ctx);
+    LLVMTypeConverter llvmTypeConverter(ctx);
+    bufferization::BufferizeTypeConverter buffTypeConverter;
 
-    // Define the properties of the classical Jacobian function.
-    std::string fnName = gradOp.getCallee().str() + ".backprop";
-
-    StringAttr visibility = rewriter.getStringAttr("private");
-
-    func::FuncOp autoDiffFn =
-        SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(gradOp, rewriter.getStringAttr(fnName));
-    if (!autoDiffFn) {
+    // Declare the special Enzyme autodiff function.
+    std::string autodiffFnName = "__enzymne_autodiff";
+    LLVM::LLVMFuncOp autodiffFn = SymbolTable::lookupNearestSymbolFrom<LLVM::LLVMFuncOp>(
+        callee, rewriter.getStringAttr(autodiffFnName));
+    if (!autodiffFn) {
         PatternRewriter::InsertionGuard insertGuard(rewriter);
-        rewriter.setInsertionPointToStart(gradOp->getParentOfType<mlir::ModuleOp>().getBody());
+        rewriter.setInsertionPointToStart(callee->getParentOfType<mlir::ModuleOp>().getBody());
 
-        StringRef name = "__enzymne_autodiff";
-        Type resType = LLVM::LLVMVoidType::get(ctx);
-        Type calleeType =
-            LLVM::LLVMPointerType::get(typeConverter.convertType(wrapperFn.getFunctionType()));
-        Type type = LLVM::LLVMFunctionType::get(resType, {calleeType}, /*isVarArg=*/true);
+        LLVM::LLVMFunctionType fnType =
+            LLVM::LLVMFunctionType::get(LLVM::LLVMVoidType::get(ctx), {}, /*isVarArg=*/true);
 
-        autoDiffFn = rewriter.create<func::FuncOp>(loc, name, type, visibility);
+        autodiffFn = rewriter.create<LLVM::LLVMFuncOp>(loc, autodiffFnName, fnType);
     }
 
-    func::FuncOp backpropFn =
-        SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(gradOp, rewriter.getStringAttr(fnName));
-    if (!backpropFn) {
-        PatternRewriter::InsertionGuard insertGuard(rewriter);
-        rewriter.setInsertionPointAfter(wrapperFn);
+    // Define the properties of the classical Jacobian function.
+    std::stringstream uniquer;
+    const std::vector<size_t> &diffArgIndices = gradOp.compDiffArgIndices();
+    std::copy(diffArgIndices.begin(), diffArgIndices.end(), std::ostream_iterator<int>(uniquer));
+    std::string fnName = callee.getName().str() + ".backprop" + uniquer.str();
 
-        backpropFn = rewriter.create<func::FuncOp>(loc, fnName, fnType, visibility);
-        Block *entryBlock = backpropFn.addEntryBlock();
+    size_t numResultArgs = callee.getNumArguments() - gradOp.getNumOperands();
+    TypeRange argTypes = gradOp.getOperandTypes();
+    SmallVector<Type> resTypes; // (callee.getArgumentTypes().end() - numResultArgs,
+                                // callee.getArgumentTypes().end());
+    FunctionType fnType = rewriter.getFunctionType(argTypes, resTypes);
+    StringAttr visibility = rewriter.getStringAttr("private");
+
+    func::FuncOp gradFn =
+        SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(callee, rewriter.getStringAttr(fnName));
+    if (!gradFn) {
+        PatternRewriter::InsertionGuard insertGuard(rewriter);
+        rewriter.setInsertionPointAfter(callee);
+
+        gradFn = rewriter.create<func::FuncOp>(loc, fnName, fnType, visibility);
+        Block *entryBlock = gradFn.addEntryBlock();
         rewriter.setInsertionPointToStart(entryBlock);
+
+        FunctionType calleeType = callee.getFunctionType();
+        Value calleeValue =
+            rewriter.create<func::ConstantOp>(loc, calleeType, callee.getName()).getResult();
+        Type calleePtrType = llvmTypeConverter.convertType(calleeType);
+        Value calleePtr =
+            rewriter.create<UnrealizedConversionCastOp>(loc, calleePtrType, calleeValue)
+                .getResult(0);
+
+        SmallVector<Value> callArgs = {calleePtr};
+        ValueRange gradFnArgs = gradFn.getArguments();
+        for (auto [arg, targetType] :
+             llvm::zip(gradFnArgs, callee.getArgumentTypes().drop_back(numResultArgs))) {
+            if (auto tensorType = arg.getType().dyn_cast<TensorType>()) {
+                // Assume we're dealing with our own converted pointer types for now.
+                assert(targetType.isa<LLVM::LLVMPointerType>());
+                Type structType = targetType.cast<LLVM::LLVMPointerType>().getElementType();
+
+                Value memref = rewriter.create<bufferization::ToMemrefOp>(
+                    loc, buffTypeConverter.convertType(tensorType), arg);
+                Value memrefStruct =
+                    rewriter.create<UnrealizedConversionCastOp>(loc, structType, memref)
+                        .getResult(0);
+                Value c1 = rewriter.create<arith::ConstantIntOp>(loc, 1, 64);
+                Value structPtr = rewriter.create<LLVM::AllocaOp>(loc, targetType, c1);
+                rewriter.create<LLVM::StoreOp>(loc, memrefStruct, structPtr);
+                arg = structPtr;
+            }
+            callArgs.push_back(arg);
+        }
+
+        rewriter.create<LLVM::CallOp>(loc, autodiffFn, callArgs);
 
         rewriter.create<func::ReturnOp>(loc);
     }
 
-    return backpropFn;
+    return gradFn;
 }
 
 } // namespace gradient
