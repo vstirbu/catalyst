@@ -1,69 +1,47 @@
-from typing import Union, List, Optional, NoReturn, Callable, Tuple, Any, Set
-from dataclasses import dataclass
+from typing import (Iterable, Dict, Union, List, Optional, NoReturn, Callable, Tuple, Any, Set)
+from dataclasses import dataclass, astuple
 from copy import deepcopy
+from functools import reduce
+from itertools import permutations, product
 
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt,
-                      CondStmt, WhileLoopStmt, FDefStmt, Program, RetStmt,
-                      ConstExpr, POI, ForLoopExpr,
-                      ControlFlowStyle as CFS, assert_never)
+                      CondExpr, WhileLoopExpr, FDefStmt, Program, RetStmt,
+                      ConstExpr, POI, ForLoopExpr, WhileLoopExpr, trueExpr, falseExpr,
+                      ControlFlowStyle as CFS, assert_never, NoneExpr)
+from .builder import Builder, contextualize_expr, build
+from .pprint import pprint
 
-import numpy as np
-from numpy import floor
-from numpy.random import seed as np_seed, rand, uniform, set_state, get_state
+sample_spec:Dict[Expr,int] = {
+    WhileLoopExpr(VName("i"), trueExpr, POI(), CFS.Catalyst) : 1,
+    CondExpr(trueExpr, POI(), POI(), CFS.Catalyst) : 1,
+}
 
+def npois(e:Expr) -> int:
+    return len(contextualize_expr(e))
 
-class RNGBase:
-    """ Base interface class for Random Number Generators """
-    def sample(self) -> float:
-        raise NotImplementedError
-    def sample_uniform(self, upper:int, lower:int=0) -> int:
-        raise NotImplementedError
+def greedy(spec:Dict[Expr,int]) -> Iterable[Builder]:
+    ps = sum([npois(k)*v for k,v in spec.items()],0)
+    es = sum([[k]*v for k,v in spec.items()], [])
+    # print(ps)
+    # print(es)
+    for e_sample in permutations(es):
+        # for p_sample in product(range(ps), repeat=len(e_sample)):
+        for p_sample in permutations(range(ps)):
+            # print(e_sample)
+            # print(p_sample)
+            b = build(POI())
+            try:
+                for p,e in zip(p_sample, e_sample):
+                    poi,ctx = astuple(b.at(p))
+                    b = b.update(p, POI.fromExpr(deepcopy(e)) )
+                for n, pc in enumerate(b.pois):
+                    if pc.poi.expr == NoneExpr():
+                        vscope = pc.ctx.get_vscope()
+                        if len(vscope)>0:
+                            b.update(n, POI.fromExpr(VRefExpr(vscope[0])))
+                yield b
+            except Exception as e:
+                print(f"Oops", e)
+            input()
 
-class RNG(RNGBase):
-    """ Sample numpy RNG implementation, not for parallel execution. """
-    def __init__(self, seed:int):
-        np_seed(seed)
-        self.state = get_state()
-    def sample(self) -> float:
-        set_state(self.state)
-        r = rand()
-        self.state = get_state()
-        return r
-    def sample_uniform(self, upper:int, lower:int=0) -> int:
-        set_state(self.state)
-        r = int(floor(uniform(lower, upper)))
-        self.state = get_state()
-        return r
-
-def sample_oneof(rng:RNGBase, candidates:list) -> Any:
-    return candidates[rng.sample_uniform(len(candidates))]
-
-def sample_bools(rng:RNGBase) -> ConstExpr:
-    return sample_oneof(rng, [ConstExpr(True), ConstExpr(False)])
-
-def sample_ints(rng:RNGBase) -> ConstExpr:
-    return sample_oneof(rng, [ConstExpr(0), ConstExpr(1), ConstExpr(42)])
-
-def sample_vname(rng:RNGBase) -> VName:
-    return VName(f"var{rng.sample_uniform(10)}")
-
-def sample_fname(rng:RNGBase) -> FName:
-    return FName(f"fun{rng.sample_uniform(10)}")
-
-def sample_assign(rng:RNGBase, exprs:List[Expr]) -> AssignStmt:
-    return AssignStmt(sample_vname(rng),
-                      sample_oneof(rng, exprs))
-
-
-
-def sample_fdef(rng:RNGBase, fname:FName, args:List[VName],
-                qwires=None) -> FDefStmt:
-    return FDefStmt(fname, args, POI(), qwires=qwires)
-
-def sample_while(rng:RNGBase, cond:Expr) -> WhileLoopStmt:
-    return WhileLoopStmt(cond, POI())
-
-def sample_cond(rng:RNGBase, cond:Expr, style=CFS.Python) -> CondStmt:
-    return CondStmt(cond, POI(),
-                    sample_oneof(rng, [None, POI()]), style)
 

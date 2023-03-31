@@ -7,9 +7,10 @@ import jax.numpy as jnp
 from catalyst.synthesis.grammar import (Expr, RetStmt, FCallExpr, VName, FName, VRefExpr, signature
                                         as expr_signature, isinstance_expr, innerdefs1)
 from catalyst.synthesis.hypothesis import *
-from catalyst.synthesis.pprint import pstr_stmt, pstr_expr, pprint
+from catalyst.synthesis.pprint import pstr_builder, pstr_stmt, pstr_expr, pprint
 from catalyst.synthesis.builder import build
 from catalyst.synthesis.exec import compileExpr, evalExpr
+from catalyst.synthesis.generator import greedy
 from pytest import mark
 
 
@@ -56,21 +57,6 @@ def closeargs(e:Expr, arg:Expr) -> Expr:
     else:
         return e
 
-
-# def bindGen1(e1:Callable[...,Expr], e2:Callable[...,Expr]) -> Callable[...,Expr]:
-#     def _result(arg):
-#         return e1(**mkExprKwargs(e1, e2(**mkExprKwargs(e2, arg))))
-#     return _result
-
-#     # e2 = e(**mkExprKwargs(body, e)) if python_signature(e) else e
-#     # e3 = mkCallExpr1(e2, arg) if expr_signature(e2) else e2
-#     # return e3
-
-# def closeExpr1(e:Callable[...,Expr], body:POI, arg:Expr) -> Expr:
-#     e2 = e(**mkExprKwargs(body, e)) if python_signature(e) else e
-#     e3 = mkCallExpr1(e2, arg) if expr_signature(e2) else e2
-#     return e3
-
 @given(x=one_of([whileloops(), forloops(), conds()]))
 def test_pprint_fdef(x:callable):
     e = x(**mkExprKwargs(x, POI()))
@@ -102,50 +88,51 @@ def test_eq_expr(x:callable):
 @given(x=complexes(allow_nan=False, allow_infinity=False))
 @settings(max_examples=10)
 def test_eval_expr(x, use_qjit):
-    assert jnp.array([x]) == evalExpr(ConstExpr(jnp.array([x])), use_qjit)
+    o,code = compileExpr(ConstExpr(jnp.array([x])), use_qjit)
+    note(code)
+    assert jnp.array([x]) == evalExpr(o)
 
 
-@given(o=one_of([whileloops(), forloops(), conds()]),
-       i=one_of([whileloops(), forloops(), conds()]))
-@settings(max_examples=1)
-def test_build_controlflow(o, i):
-    d = ConstExpr(0)
-    i2 = bind1(part1(i), lambda var: var[0] if var else d)
-    o2 = bind1(part1(o), lambda var: (lambda poi: closeargs(i2(poi), var[0]) if var else d))
-    pprint(o2(POI()))
-    assert False
+def test_build_mutable_layout():
+    l = WhileLoopExpr(VName("i"), trueExpr, POI(), ControlFlowStyle.Catalyst)
+    c = CondExpr(trueExpr, POI(), POI(), ControlFlowStyle.Catalyst)
 
-def run_build_controlflow(o, i):
-    d = ConstExpr(0)
-    i2 = bind1(part1(i), lambda vs: (lambda _ : vs[0] if vs else d))
-    o2 = bind1(part1(o), lambda vs: (lambda poi: closeargs(i2(poi), vs[0]) if vs else d))
-    pprint(o2(POI()))
+    l_poi = l.body
+    c_poi1 = c.trueBranch
+    c_poi2 = c.falseBranch
 
-    # pprint(build(RetStmt(part1(o)(POI()))).insert_statement(0,RetStmt(part1(i)(POI()))))
-    # pprint(build(RetStmt(part1(o)(POI()))).insert_statement(0,RetStmt(ConstExpr(33))))
-    # pprint(build(POI.fromExpr(part1(o)(POI()))).append_expr(0, lambda _ : ConstExpr(33)))
-    b = build(
-        POI()
-    ).append_expr(
-        0, lambda ctx, var: closeargs(part1(o)(POI()),ConstExpr(0))
-    ).append_expr(
-        1, lambda ctx, var: closeargs(part1(i)(POI()),VRefExpr(ctx.vscope[-1]))
-    ).append_expr(
-        2, lambda ctx, var: VRefExpr(ctx.vscope[-1])
-    )
-    # part1(i)(POI.fromExpr(VRefExpr(ctx.vscope[-1]))
-    # print(b)
-    pprint(b)
-    # pprint(build(POI.fromExpr(part1(o)(POI()))).append_expr(0, lambda var : part1(i)(POI.fromExpr(var))))
+    b_poi = POI()
+    b = build(b_poi)
+    assert len(b.pois)==1
+    assert b.pois[0].poi is b_poi
+
+    poi1 = POI.fromExpr(l)
+    b.update(0, poi1)
+    assert len(b.pois)==2
+    assert b.pois[0].poi is b_poi
+    assert b.pois[1].poi is l_poi
+
+    poi2 = POI.fromExpr(c)
+    b.update(1, poi2)
+    assert len(b.pois)==4
+    assert b.pois[0].poi is b_poi
+    assert b.pois[1].poi is l_poi
+    assert b.pois[2].poi is c_poi1
+    assert b.pois[3].poi is c_poi2
+    # pprint(b)
+    b.update(0, POI())
+    assert len(b.pois)==1
 
 
-#     kwargs_i = mkExprKwargs(POI(), i)
-#     kwargs_o = mkExprKwargs(POI.fromExpr(i(**kwargs_i)), o)
-#     # pprint(o(**kwargs_o))
-
-#     b = build(RetStmt(o(**mkExprKwargs(POI(), o))))
-#     pprint(b)
-#     assert False
-
-
-
+def test_build_mutable_layout2():
+    l = WhileLoopExpr(VName("i"), trueExpr, POI(), ControlFlowStyle.Catalyst)
+    c = CondExpr(trueExpr, POI(), POI(), ControlFlowStyle.Catalyst)
+    b = build(POI())
+    b.update(0, POI.fromExpr(l))
+    b.update(1, POI.fromExpr(c))
+    assert len(b.pois)==4
+    s1 = pstr_builder(b)
+    b.update(0, b.pois[0].poi)
+    assert len(b.pois)==4
+    s2 = pstr_builder(b)
+    assert s1 == s2

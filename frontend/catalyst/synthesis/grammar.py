@@ -2,25 +2,34 @@
 language. The `Program` dataclass is supposed to be top-level node of the AST.
 """
 
-from typing import (Any, List, Tuple, Optional, Dict, Union, NoReturn, Set)
-from dataclasses import dataclass
+from typing import (Any, List, Tuple, Optional, Dict, Union, NoReturn, Set, Callable)
+from dataclasses import dataclass, field
 from enum import Enum
 from jax import Array as JaxArray
 
 
-@dataclass(unsafe_hash=True)
+@dataclass
 class POI:
     """ Point Of Insertion. By convention, we allow inserting new
     statements strictly at the end of the list of already existing ones. """
     stmts:List["Stmt"]
     expr:"Expr"
+
     def __init__(self, stmts=None, expr=None):
         self.stmts = stmts if stmts is not None else []
         self.expr = expr if expr is not None else NoneExpr()
 
+    def __hash__(self):
+        return hash((tuple(self.stmts), self.expr))
+
     @classmethod
     def fromExpr(cls, e:"Expr") -> "POI":
         return POI([],e)
+
+    @classmethod
+    def bind(cls, a:"POI", fb:Callable[["Expr"],"POI"]) -> "POI":
+        b = fb(a.expr)
+        return POI(a.stmts + b.stmts, b.expr)
 
 
 @dataclass(frozen=True)
@@ -70,7 +79,7 @@ class ControlFlowStyle(Enum):
     Catalyst = 1
     JAX = 2
 
-@dataclass
+@dataclass(frozen=True)
 class CondExpr:
     """ Expression - conditional """
     cond: Expr
@@ -78,7 +87,7 @@ class CondExpr:
     falseBranch: Optional[POI]
     style: ControlFlowStyle
 
-@dataclass
+@dataclass(frozen=True)
 class ForLoopExpr:
     """ Expression - for loop """
     loopvar: VName
@@ -87,7 +96,7 @@ class ForLoopExpr:
     body: POI
     style: ControlFlowStyle
 
-@dataclass
+@dataclass(frozen=True)
 class WhileLoopExpr:
     """ Expression - while loop """
     loopvar: VName
@@ -107,13 +116,13 @@ def isinstance_stmt(s:Any) -> bool:
     """Workaround for a TypeError, which is probably a Python bug."""
     return isinstance(s, (AssignStmt, FDefStmt, RetStmt))
 
-@dataclass
+@dataclass(frozen=True)
 class AssignStmt:
     """ Statement - variable assignemnt or a function call """
     vname: Optional[VName]
     expr: Expr
 
-@dataclass
+@dataclass(frozen=True)
 class FDefStmt:
     """ Statement - function declaration """
     fname: FName
@@ -123,7 +132,7 @@ class FDefStmt:
     qdevice: Optional[str] = None
     qjit: bool = False
 
-@dataclass
+@dataclass(frozen=True)
 class RetStmt:
     """ Statement - return """
     expr: Optional[Expr]

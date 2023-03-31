@@ -26,8 +26,8 @@ def compileExpr(e :Expr, use_qjit:bool=True) -> Tuple[PythonObj, PythonCode]:
     return (o, code)
 
 
-def evalExpr(e: Union[Expr,PythonObj], use_qjit:bool=True) -> Any:
-    o = compileExpr(e, use_qjit)[0] if isinstance_expr(e) else e
+def evalExpr(e: Union[Expr,PythonObj], **kwargs) -> Any:
+    o = compileExpr(e, **kwargs)[0] if isinstance_expr(e) else e
     gctx, lctx = {}, {}
     gctx.update({'qml': qml,
                  'for_loop':for_loop,

@@ -179,14 +179,14 @@ def pstr_poi(p:POI, state:Optional[PStrState]=None, hint=None) -> List[str]:
             _in(st, [f"## {e} ##"]))
 
 
-def pstr_builder(t:Builder, state:Optional[PStrState]=None) -> List[str]:
+def pstr_builder(b:Builder, state:Optional[PStrState]=None) -> List[str]:
     st = state if state is not None else PStrState()
     def _hp(poi:POI) -> List[str]:
-        for poic in t.pois:
+        for poic in b.pois:
             if poi is poic.poi:
                 return [', '.join(v.val for v in sorted(poic.ctx.get_vscope()))]
         return []
-    return pstr_poi(t.root, st, _hp)
+    return pstr_poi(b.pois[0].poi, st, _hp)
 
 def pstr_prog(p:Program, state:Optional[PStrState]=None) -> List[str]:
     """ Pretty-print the program """
