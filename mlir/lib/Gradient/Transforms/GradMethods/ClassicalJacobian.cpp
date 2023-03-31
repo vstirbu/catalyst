@@ -399,6 +399,14 @@ func::FuncOp genBackpropFunction(PatternRewriter &rewriter, Location loc, gradie
                 MemRefType memrefType =
                     buffTypeConverter.convertType(tensorType).cast<MemRefType>();
                 Value shadowMemref = rewriter.create<memref::AllocOp>(loc, memrefType, memrefSize);
+
+                // One-hot initialize the tangent vector.
+                Value c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+                SmallVector<Value> indices(memrefType.getRank(), c0);
+                Value c1_f = rewriter.create<arith::ConstantOp>(
+                    loc, rewriter.getFloatAttr(memrefType.getElementType(), 1.0));
+                rewriter.create<memref::StoreOp>(loc, c1_f, shadowMemref, indices);
+
                 Value shadowStruct =
                     rewriter.create<UnrealizedConversionCastOp>(loc, structType, shadowMemref)
                         .getResult(0);
