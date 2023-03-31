@@ -21,6 +21,7 @@
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -180,25 +181,43 @@ func::FuncOp genEnzymeWrapperFunction(PatternRewriter &rewriter, Location loc, G
                                       func::FuncOp argMapFn)
 {
     MLIRContext *ctx = rewriter.getContext();
-    LLVMTypeConverter typeConverter(ctx);
+    LLVMTypeConverter llvmTypeConverter(ctx);
+    bufferization::BufferizeTypeConverter buffTypeConverter;
 
     // Define the properties of the enzyme wrapper function.
     std::string fnName = gradOp.getCallee().str() + ".enzyme_wrapper";
     SmallVector<Type> argTypes(argMapFn.getArgumentTypes().begin(),
                                argMapFn.getArgumentTypes().end());
+    argTypes.insert(argTypes.end(), argMapFn.getResultTypes().begin(),
+                    argMapFn.getResultTypes().end());
 
-    SmallVector<Type> tensorFreeResultTypes, llvmResultTypes, llvmResultPointerTypes;
-    for (Type type : argMapFn.getResultTypes()) {
-        if (auto t = type.dyn_cast<TensorType>())
-            type = MemRefType::get(t.getShape(), t.getElementType());
-        tensorFreeResultTypes.push_back(type);
+    SmallVector<Type> originalArgTypes, bufferizedArgTypes;
+    for (auto argTypeIt = argTypes.begin(); argTypeIt < argTypes.end() - argMapFn.getNumResults();
+         argTypeIt++) {
+        originalArgTypes.push_back(*argTypeIt);
+        if (argTypeIt->isa<TensorType>()) {
+            Type buffArgType = buffTypeConverter.convertType(*argTypeIt);
+            bufferizedArgTypes.push_back(buffArgType);
+            Type llvmArgType = llvmTypeConverter.convertType(buffArgType);
+            if (!llvmArgType)
+                emitError(loc, "Could not convert argmap argument to LLVM type: ") << buffArgType;
+            *argTypeIt = LLVM::LLVMPointerType::get(llvmArgType);
+        }
+        else {
+            bufferizedArgTypes.push_back(*argTypeIt);
+        }
     }
-    if (failed(typeConverter.convertTypes(tensorFreeResultTypes, llvmResultTypes)))
-        emitError(loc, "Could not convert argmap result types to LLVM types.");
-    for (Type type : llvmResultTypes) {
-        llvmResultPointerTypes.push_back(LLVM::LLVMPointerType::get(type));
+    SmallVector<Type> bufferizedResultTypes, llvmResultTypes;
+    for (auto resTypeIt = argTypes.begin() + argMapFn.getNumArguments(); resTypeIt < argTypes.end();
+         resTypeIt++) {
+        Type buffResType = buffTypeConverter.convertType(*resTypeIt);
+        bufferizedResultTypes.push_back(buffResType);
+        Type llvmResType = llvmTypeConverter.convertType(buffResType);
+        if (!llvmResType)
+            emitError(loc, "Could not convert argmap result to LLVM type: ") << buffResType;
+        llvmResultTypes.push_back(llvmResType);
+        *resTypeIt = LLVM::LLVMPointerType::get(llvmResType);
     }
-    argTypes.insert(argTypes.end(), llvmResultPointerTypes.begin(), llvmResultPointerTypes.end());
 
     FunctionType fnType = rewriter.getFunctionType(argTypes, {});
     StringAttr visibility = rewriter.getStringAttr("private");
@@ -213,13 +232,23 @@ func::FuncOp genEnzymeWrapperFunction(PatternRewriter &rewriter, Location loc, G
         Block *entryBlock = enzymeFn.addEntryBlock();
         rewriter.setInsertionPointToStart(entryBlock);
 
-        ValueRange callArgs = enzymeFn.getArguments().take_front(argMapFn.getNumArguments());
+        SmallVector<Value> callArgs(enzymeFn.getArguments().begin(),
+                                    enzymeFn.getArguments().end() - argMapFn.getNumResults());
+        for (auto [arg, buffType] : llvm::zip(callArgs, bufferizedArgTypes)) {
+            if (arg.getType().isa<LLVM::LLVMPointerType>()) {
+                Value memrefStruct = rewriter.create<LLVM::LoadOp>(loc, arg);
+                Value memref =
+                    rewriter.create<UnrealizedConversionCastOp>(loc, buffType, memrefStruct)
+                        .getResult(0);
+                arg = rewriter.create<bufferization::ToTensorOp>(loc, memref);
+            }
+        }
         ValueRange results = rewriter.create<func::CallOp>(loc, argMapFn, callArgs).getResults();
 
         ValueRange resArgs = enzymeFn.getArguments().drop_front(argMapFn.getNumArguments());
 
         SmallVector<Value> tensorFreeResults;
-        for (auto [result, memrefType] : llvm::zip(results, tensorFreeResultTypes)) {
+        for (auto [result, memrefType] : llvm::zip(results, bufferizedResultTypes)) {
             if (result.getType().isa<TensorType>())
                 result = rewriter.create<bufferization::ToMemrefOp>(loc, memrefType, result);
             tensorFreeResults.push_back(result);
