@@ -18,16 +18,27 @@ from .builder import (Builder)
 
 DEFAULT_QDEVICE = "catalyst-lightning"
 
+suffix:int = 0
+
+@dataclass
+class Suffix:
+    val:int
+
 @dataclass
 class PStrState:
     indent:int = 0
-    catalyst_cf_suffix:int = 0
+    catalyst_cf_suffix:int = Suffix(0)
 
     def tabulate(self) -> "PStrState":
         return PStrState(self.indent+1, self.catalyst_cf_suffix)
+        # self.indent+=1
+        # return self
     def issue(self, name) -> Tuple["PStrState",str]:
-        s2 = PStrState(self.indent, self.catalyst_cf_suffix+1)
-        return s2, f"{name}{self.catalyst_cf_suffix}"
+        self.catalyst_cf_suffix.val+=1
+        s2 = PStrState(self.indent, self.catalyst_cf_suffix)
+        return s2, f"{name}{self.catalyst_cf_suffix.val-1}"
+        # self.catalyst_cf_suffix+=1
+        # return self, f"{name}{self.catalyst_cf_suffix-1}"
 
 def _in(st, lines):
     """ Indent """
@@ -53,7 +64,7 @@ def pstr_expr(expr:Expr,
               state:Optional[PStrState]=None,
               hint:Optional[HintPrinter]=None) -> Tuple[List[str],str]:
     e = expr
-    st = state if state else PStrState()
+    st = state if state else PStrState(0,Suffix(0))
     if isinstance(e, FCallExpr):
         acc_name,name = pstr_expr(e.expr, state, hint)
         acc_body,args = list(),list()
@@ -140,7 +151,7 @@ def pstr_expr(expr:Expr,
 def pstr_stmt(s:Stmt,
               state:Optional[PStrState]=None,
               hint:Optional[HintPrinter]=None) -> List[str]:
-    st:PStrState = state if state is not None else PStrState()
+    st:PStrState = state if state is not None else PStrState(0,Suffix(0))
 
     if False:
         pass
@@ -171,7 +182,7 @@ def pstr_stmt(s:Stmt,
         assert_never(s)
 
 def pstr_poi(p:POI, state:Optional[PStrState]=None, hint=None) -> List[str]:
-    st = state if state is not None else PStrState()
+    st = state if state is not None else PStrState(0,Suffix(0))
     lines, e = pstr_expr(p.expr, st, hint)
     return (sum(([pstr_stmt(s, st, hint)] for s in p.stmts), []) +
             lines +
@@ -180,7 +191,7 @@ def pstr_poi(p:POI, state:Optional[PStrState]=None, hint=None) -> List[str]:
 
 
 def pstr_builder(b:Builder, state:Optional[PStrState]=None) -> List[str]:
-    st = state if state is not None else PStrState()
+    st = state if state is not None else PStrState(0,Suffix(0))
     def _hp(poi:POI) -> List[str]:
         for poic in b.pois:
             if poi is poic.poi:

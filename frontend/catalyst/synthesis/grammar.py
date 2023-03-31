@@ -4,6 +4,7 @@ language. The `Program` dataclass is supposed to be top-level node of the AST.
 
 from typing import (Any, List, Tuple, Optional, Dict, Union, NoReturn, Set, Callable)
 from dataclasses import dataclass, field
+from copy import deepcopy
 from enum import Enum
 from jax import Array as JaxArray
 
@@ -26,10 +27,6 @@ class POI:
     def fromExpr(cls, e:"Expr") -> "POI":
         return POI([],e)
 
-    @classmethod
-    def bind(cls, a:"POI", fb:Callable[["Expr"],"POI"]) -> "POI":
-        b = fb(a.expr)
-        return POI(a.stmts + b.stmts, b.expr)
 
 
 @dataclass(frozen=True)
@@ -145,21 +142,25 @@ def assert_never(x: Any) -> NoReturn:
     raise AssertionError("Unhandled type: {}".format(type(x).__name__))
 
 
+@dataclass
+class Signature:
+    args:List[str]
+    ret:str
+
+
 def signature(x: Union[FDefStmt, ForLoopExpr, WhileLoopExpr, CondExpr]
-              ) -> Optional[Tuple[str,List[str]]]:
+              ) -> Optional[Signature]:
     """Return callable expression signature: the "names" list of arguments and the return "type", or
-    None for non-callable expressions.
-    Currently, we don't use true typing system and return more or less random names here.
-    For `FDefStmt` the calculation is straightforward.  Note that loops and conditionals are also
-    callables. """
+    None for non-callable expressions. Currently, we don't use true type system.
+    Note that loops and conditionals are callables in this language. """
     if isinstance(x, FDefStmt):
-        return (x.fname, x.args)
+        return Signature(['*']*len(x.args), "*")
     elif isinstance(x, ForLoopExpr):
-        return ("forloop", [x.loopvar])
+        return Signature(["*"], "*")
     elif isinstance(x, WhileLoopExpr):
-        return ("whileloop", [x.loopvar])
+        return Signature(["*"], "*")
     elif isinstance(x, CondExpr):
-        return ("cond", [])
+        return Signature([], "*")
     else:
         return None
 
@@ -172,4 +173,17 @@ def innerdefs1(e: Expr) -> Set[VRefExpr]:
         return set([VRefExpr(e.loopvar)])
     else:
         return set()
+
+
+def bind(a:POI, b:POI, expr:Expr) -> POI:
+    return POI(a.stmts + b.stmts, expr)
+
+
+def bindUnary(value:POI, function:POI) -> Optional[POI]:
+    s = signature(function.expr)
+    if (s is None) or (len(s.args) != 1):
+        return None
+    return bind(value, function, FCallExpr(function.expr, [value.expr]))
+
+
 

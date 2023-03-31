@@ -1,13 +1,17 @@
+from typing import Dict, List, Any, Optional
 from functools import partial
+from copy import deepcopy
 
 from hypothesis.strategies import (text, decimals, integers, characters, from_regex, dictionaries,
                                    one_of, lists, recursive, none, booleans, floats, composite,
                                    binary, sets, permutations, sampled_from, data, from_regex,
                                    uuids, just)
 
-from catalyst.synthesis.grammar import (VName, FName, FDefStmt, CondExpr, ForLoopExpr, POI,
-                                        WhileLoopExpr, trueExpr, falseExpr, ControlFlowStyle,
-                                        ConstExpr)
+from .grammar import (VName, FName, FDefStmt, CondExpr, ForLoopExpr, POI, WhileLoopExpr, trueExpr,
+                      falseExpr, ControlFlowStyle, ConstExpr, Expr, VRefExpr, bindUnary, signature,
+                      NoneExpr)
+from .builder import build
+from .pprint import pprint
 
 @composite
 def complexes(draw, re=None, im=None, **kwargs):
@@ -63,4 +67,30 @@ def whileloops(draw,
                    loopvar=draw(lname),
                    cond=draw(lexpr),
                    style=style)
+
+
+@composite
+def programs(draw, spec:Dict[Expr,int], vscope:List[VName]):
+    spec = deepcopy(spec)
+    b = build(POI.fromExpr(VRefExpr(draw(sampled_from(vscope)))), vscope)
+    print(b)
+    while sum(spec.values())>0:
+        options = [k for k,v in spec.items() if v>0]
+        print('O', options)
+        e = draw(sampled_from(options))
+        p = draw(sampled_from(range(len(b.pois))))
+        combined = bindUnary(b.at(p).poi, POI.fromExpr(deepcopy(e)))
+        print(combined)
+        if combined:
+            pwcs = b.update(p, combined)
+            for pwc in [pwc for pwc in pwcs if pwc.poi.expr == NoneExpr()]:
+                vname = draw(sampled_from(pwc.ctx.get_vscope()))
+                b.update(pwc, POI.fromExpr(VRefExpr(vname)), assert_no_delete=True)
+            spec[e]-=1
+        else:
+            s = signature(e)
+            print(s)
+
+    # pprint(b)
+    return b
 

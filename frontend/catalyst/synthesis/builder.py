@@ -32,6 +32,10 @@ class Context:
     def parents(self) -> list:
         return [] if self.parent is None else [self.parent] + self.parent.parents()
 
+def is_parent_of(parent, child) -> bool:
+    return id(parent) in map(id,child.parents())
+
+
 @dataclass(frozen=True)
 class POIWithContext:
     """ Point Of Insertion with the context tracks the information which is
@@ -49,20 +53,33 @@ class Builder:
     # root: POI
     pois: List[POIWithContext]
 
-    def at(self, n:int) -> POIWithContext:
-        return self.pois[n]
+    def at(self, n:Union[int, PWC]) -> PWC:
+        if isinstance(n, int):
+            return self.pois[n]
+        elif isinstance(n, PWC):
+            assert n in self.pois
+            return n
+        else:
+            raise ValueError("Invalid value passed to Builder.at() as a key")
 
-    def update(self, n:int, poi:POI) -> "Builder":
-        """ Add a new statement at the point of insertion """
-        poic:PWC = self.pois[n]
+    def update(self, n:Union[int, PWC], poi:POI, assert_no_delete=False) -> List[PWC]:
+        """ Add a new statement at the point of insertion, return the list of new PWCs """
+        poic:PWC = self.at(n)
         for i in reversed(range(len(self.pois))):
-            if id(poic.ctx) in map(id,self.pois[i].ctx.parents()):
-                assert i != n, f"We surely don't delete the requested POI #{n}"
+            if is_parent_of(poic.ctx, self.pois[i].ctx):
+                # assert i != n, f"We surely don't delete the requested POI #{n}"
+                print(f"Removing {i}")
+                assert not assert_no_delete, f"But we do delete {i} when updating {n}!"
                 del self.pois[i]
-        self.pois.extend(contextualize_poi(poi, poic.ctx))
+        pwcs = contextualize_poi(poi, poic.ctx)
+        # print(f"Added {len(pwcs)} more")
+        self.pois.extend(pwcs)
         poic.poi.stmts = poi.stmts
         poic.poi.expr = poi.expr
-        return self
+        for pwc in pwcs:
+            assert is_parent_of(poic.ctx, pwc.ctx)
+            assert pwc in self.pois
+        return pwcs
 
 
 def pois_scan_inplace(ss:List[Stmt], ctx:Context, acc:List[PWC]) -> Context:
@@ -130,8 +147,8 @@ def contextualize_poi(poi:POI, ctx:Context) -> List[PWC]:
     return pwc1 + pwc2
 
 
-def build(poi:POI) -> Builder:
-    ctx = Context()
+def build(poi:POI, vscope:Optional[List[VName]]=None) -> Builder:
+    ctx = Context(vscope)
     return Builder([POIWithContext(poi,ctx)] + contextualize_poi(poi, ctx))
 
 
