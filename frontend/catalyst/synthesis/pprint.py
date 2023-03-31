@@ -184,7 +184,7 @@ def pstr_stmt(s:Stmt,
 def pstr_poi(p:POI, state:Optional[PStrState]=None, hint=None) -> List[str]:
     st = state if state is not None else PStrState(0,Suffix(0))
     lines, e = pstr_expr(p.expr, st, hint)
-    return (sum(([pstr_stmt(s, st, hint)] for s in p.stmts), []) +
+    return (sum(([pstr_stmt(s, st, hint)] for s in p.stmts), [])[0] +
             lines +
             _hi(st, hint, p) +
             _in(st, [f"## {e} ##"]))

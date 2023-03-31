@@ -9,7 +9,7 @@ from hypothesis.strategies import (text, decimals, integers, characters, from_re
 
 from .grammar import (VName, FName, FDefStmt, CondExpr, ForLoopExpr, POI, WhileLoopExpr, trueExpr,
                       falseExpr, ControlFlowStyle, ConstExpr, Expr, VRefExpr, bindUnary, signature,
-                      NoneExpr)
+                      NoneExpr, FName, FDefStmt)
 from .builder import build
 from .pprint import pprint
 
@@ -72,13 +72,13 @@ def whileloops(draw,
 @composite
 def programs(draw, spec:Dict[Expr,int], vscope:List[VName]):
     spec = deepcopy(spec)
-    b = build(POI.fromExpr(VRefExpr(draw(sampled_from(vscope)))), vscope)
+    b = build(POI([FDefStmt(FName("main"), vscope, POI.fromExpr(VRefExpr(VName('x'))))]))
     print(b)
     while sum(spec.values())>0:
         options = [k for k,v in spec.items() if v>0]
         print('O', options)
         e = draw(sampled_from(options))
-        p = draw(sampled_from(range(len(b.pois))))
+        p = draw(sampled_from(range(1,len(b.pois))))
         combined = bindUnary(b.at(p).poi, POI.fromExpr(deepcopy(e)))
         print(combined)
         if combined:

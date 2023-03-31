@@ -182,8 +182,8 @@ def test_build_destructive_update():
 
 
 sample_spec:Dict[Expr,int] = {
-    WhileLoopExpr(VName("i"), trueExpr, POI(), ControlFlowStyle.Catalyst) : 2,
-    ForLoopExpr(VName("i"), ConstExpr(0), ConstExpr(10), POI(), ControlFlowStyle.Catalyst) : 3,
+    WhileLoopExpr(VName("i"), trueExpr, POI(), ControlFlowStyle.Catalyst) : 1,
+    ForLoopExpr(VName("i"), ConstExpr(0), ConstExpr(10), POI(), ControlFlowStyle.Catalyst) : 2,
     # CondExpr(trueExpr, POI(), POI(), ControlFlowStyle.Catalyst) : 1,
 }
 
