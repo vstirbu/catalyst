@@ -26,6 +26,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 
+#include "Gradient/Utils/GradientShape.h"
 #include "Quantum/IR/QuantumOps.h"
 #include "Quantum/Utils/RemoveQuantumMeasurements.h"
 
@@ -271,8 +272,8 @@ func::FuncOp genEnzymeWrapperFunction(PatternRewriter &rewriter, Location loc, G
 ///
 /// .
 ///
-func::FuncOp genBackpropFunction(PatternRewriter &rewriter, Location loc, GradOp gradOp,
-                                 func::FuncOp callee)
+func::FuncOp genBackpropFunction(PatternRewriter &rewriter, Location loc, gradient::GradOp gradOp,
+                                 func::FuncOp callee, func::FuncOp wrapper)
 {
     MLIRContext *ctx = rewriter.getContext();
     LLVMTypeConverter llvmTypeConverter(ctx);
@@ -281,10 +282,10 @@ func::FuncOp genBackpropFunction(PatternRewriter &rewriter, Location loc, GradOp
     // Declare the special Enzyme autodiff function.
     std::string autodiffFnName = "__enzymne_autodiff";
     LLVM::LLVMFuncOp autodiffFn = SymbolTable::lookupNearestSymbolFrom<LLVM::LLVMFuncOp>(
-        callee, rewriter.getStringAttr(autodiffFnName));
+        wrapper, rewriter.getStringAttr(autodiffFnName));
     if (!autodiffFn) {
         PatternRewriter::InsertionGuard insertGuard(rewriter);
-        rewriter.setInsertionPointToStart(callee->getParentOfType<mlir::ModuleOp>().getBody());
+        rewriter.setInsertionPointToStart(wrapper->getParentOfType<mlir::ModuleOp>().getBody());
 
         LLVM::LLVMFunctionType fnType =
             LLVM::LLVMFunctionType::get(LLVM::LLVMVoidType::get(ctx), {}, /*isVarArg=*/true);
@@ -293,40 +294,49 @@ func::FuncOp genBackpropFunction(PatternRewriter &rewriter, Location loc, GradOp
     }
 
     // Define the properties of the classical Jacobian function.
-    std::stringstream uniquer;
-    const std::vector<size_t> &diffArgIndices = gradOp.compDiffArgIndices();
-    std::copy(diffArgIndices.begin(), diffArgIndices.end(), std::ostream_iterator<int>(uniquer));
-    std::string fnName = callee.getName().str() + ".backprop" + uniquer.str();
-
-    size_t numResultArgs = callee.getNumArguments() - gradOp.getNumOperands();
-    TypeRange argTypes = gradOp.getOperandTypes();
-    SmallVector<Type> resTypes; // (callee.getArgumentTypes().end() - numResultArgs,
-                                // callee.getArgumentTypes().end());
+    std::string fnName = wrapper.getName().str() + ".backprop";
+    TypeRange argTypes = callee.getArgumentTypes();
+    std::vector<Type> resTypes = computeResultTypes(callee, gradOp.compDiffArgIndices());
+    // Drop the last dimension as we only compute the gradient (not Jacobian) for now.
+    for (Type &type : resTypes) {
+        if (auto tensorType = type.dyn_cast<TensorType>()) {
+            type = RankedTensorType::get(tensorType.getShape().drop_back(),
+                                         tensorType.getElementType());
+        }
+    }
     FunctionType fnType = rewriter.getFunctionType(argTypes, resTypes);
     StringAttr visibility = rewriter.getStringAttr("private");
 
+    size_t numResultArgs = wrapper.getNumArguments() - callee.getNumArguments();
+
     func::FuncOp gradFn =
-        SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(callee, rewriter.getStringAttr(fnName));
+        SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(wrapper, rewriter.getStringAttr(fnName));
     if (!gradFn) {
         PatternRewriter::InsertionGuard insertGuard(rewriter);
-        rewriter.setInsertionPointAfter(callee);
+        rewriter.setInsertionPointAfter(wrapper);
 
         gradFn = rewriter.create<func::FuncOp>(loc, fnName, fnType, visibility);
         Block *entryBlock = gradFn.addEntryBlock();
         rewriter.setInsertionPointToStart(entryBlock);
 
-        FunctionType calleeType = callee.getFunctionType();
-        Value calleeValue =
-            rewriter.create<func::ConstantOp>(loc, calleeType, callee.getName()).getResult();
-        Type calleePtrType = llvmTypeConverter.convertType(calleeType);
-        Value calleePtr =
-            rewriter.create<UnrealizedConversionCastOp>(loc, calleePtrType, calleeValue)
+        FunctionType wrapperType = wrapper.getFunctionType();
+        Value wrapperValue =
+            rewriter.create<func::ConstantOp>(loc, wrapperType, wrapper.getName()).getResult();
+        Type wrapperPtrType = llvmTypeConverter.convertType(wrapperType);
+        Value wrapperPtr =
+            rewriter.create<UnrealizedConversionCastOp>(loc, wrapperPtrType, wrapperValue)
                 .getResult(0);
 
-        SmallVector<Value> callArgs = {calleePtr};
+        SmallVector<Value> callArgs = {wrapperPtr};
+        SmallVector<Value> gradients;
+        // SmallVector<Type> gradientTypes;
+
+        // Handle callee arguments and their shadows.
         ValueRange gradFnArgs = gradFn.getArguments();
         for (auto [arg, targetType] :
-             llvm::zip(gradFnArgs, callee.getArgumentTypes().drop_back(numResultArgs))) {
+             llvm::zip(gradFnArgs, wrapper.getArgumentTypes().drop_back(numResultArgs))) {
+
+            Value shadow;
             if (auto tensorType = arg.getType().dyn_cast<TensorType>()) {
                 // Assume we're dealing with our own converted pointer types for now.
                 assert(targetType.isa<LLVM::LLVMPointerType>());
@@ -341,13 +351,85 @@ func::FuncOp genBackpropFunction(PatternRewriter &rewriter, Location loc, GradOp
                 Value structPtr = rewriter.create<LLVM::AllocaOp>(loc, targetType, c1);
                 rewriter.create<LLVM::StoreOp>(loc, memrefStruct, structPtr);
                 arg = structPtr;
+
+                // Also generate it's shadow.
+                Value shadowMemref =
+                    rewriter.create<memref::AllocOp>(loc, memref.getType().cast<MemRefType>());
+                Value shadowStruct =
+                    rewriter.create<UnrealizedConversionCastOp>(loc, structType, shadowMemref)
+                        .getResult(0);
+                Value shadowPtr = rewriter.create<LLVM::AllocaOp>(loc, targetType, c1);
+                rewriter.create<LLVM::StoreOp>(loc, shadowStruct, shadowPtr);
+                shadow = shadowPtr;
+                gradients.push_back(shadow);
+                // gradientTypes.push_back(shadowMemref.getType());
             }
+            else {
+                Type llvmArgType = llvmTypeConverter.convertType(arg.getType());
+                if (!llvmArgType)
+                    emitError(loc, "Could not convert argmap argument to LLVM type: ")
+                        << arg.getType();
+                if (llvmArgType != arg.getType()) {
+                    arg = rewriter.create<UnrealizedConversionCastOp>(loc, llvmArgType, arg)
+                              .getResult(0);
+                }
+            }
+
             callArgs.push_back(arg);
+            if (shadow) {
+                callArgs.push_back(shadow);
+            }
+        }
+
+        // Handle callee results and their shadows.
+        Value memrefSize = gradFn.getArguments().back();
+        TypeRange calleeResTypes = callee.getResultTypes();
+        for (auto [resType, targetType] :
+             llvm::zip(calleeResTypes, wrapper.getArgumentTypes().take_back(numResultArgs))) {
+
+            Value c1 = rewriter.create<arith::ConstantIntOp>(loc, 1, 64);
+            Value resArg = rewriter.create<LLVM::AllocaOp>(loc, targetType, c1);
+            Value shadow;
+            if (auto tensorType = resType.dyn_cast<TensorType>()) {
+                // Result tensors are always converted into pointer struct types.
+                assert(targetType.isa<LLVM::LLVMPointerType>());
+                Type structType = targetType.cast<LLVM::LLVMPointerType>().getElementType();
+
+                // Also generate it's shadow.
+                MemRefType memrefType =
+                    buffTypeConverter.convertType(tensorType).cast<MemRefType>();
+                Value shadowMemref = rewriter.create<memref::AllocOp>(loc, memrefType, memrefSize);
+                Value shadowStruct =
+                    rewriter.create<UnrealizedConversionCastOp>(loc, structType, shadowMemref)
+                        .getResult(0);
+                Value shadowPtr = rewriter.create<LLVM::AllocaOp>(loc, targetType, c1);
+                rewriter.create<LLVM::StoreOp>(loc, shadowStruct, shadowPtr);
+                shadow = shadowPtr;
+            }
+
+            callArgs.push_back(resArg);
+            if (shadow) {
+                callArgs.push_back(shadow);
+            }
         }
 
         rewriter.create<LLVM::CallOp>(loc, autodiffFn, callArgs);
 
-        rewriter.create<func::ReturnOp>(loc);
+        SmallVector<Value> returnValues;
+        for (auto [structPtr, targetType] : llvm::zip(gradients, gradFn.getResultTypes())) {
+            // Assume result gradients are always tensors for now.
+            assert(targetType.isa<TensorType>());
+            Type targetMemrefType = buffTypeConverter.convertType(targetType);
+
+            Value memrefStruct = rewriter.create<LLVM::LoadOp>(loc, structPtr);
+            Value memref =
+                rewriter.create<UnrealizedConversionCastOp>(loc, targetMemrefType, memrefStruct)
+                    .getResult(0);
+            // Value castedMemref = rewriter.create<memref::CastOp>(loc, targetMemrefType, memref);
+            Value tensor = rewriter.create<bufferization::ToTensorOp>(loc, memref);
+            returnValues.push_back(tensor);
+        }
+        rewriter.create<func::ReturnOp>(loc, returnValues);
     }
 
     return gradFn;

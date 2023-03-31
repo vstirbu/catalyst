@@ -55,7 +55,7 @@ void ParameterShiftLowering::rewrite(GradOp op, PatternRewriter &rewriter) const
     // function will be differentiated to produce the classical jacobian.
     func::FuncOp argMapFn = genArgMapFunction(rewriter, loc, callee);
     func::FuncOp wrapperFn = genEnzymeWrapperFunction(rewriter, loc, op, argMapFn);
-    genBackpropFunction(rewriter, loc, op, wrapperFn);
+    genBackpropFunction(rewriter, loc, op, argMapFn, wrapperFn);
 
     // Generate the shifted version of callee, enabling us to shift an arbitrary gate
     // parameter at runtime.

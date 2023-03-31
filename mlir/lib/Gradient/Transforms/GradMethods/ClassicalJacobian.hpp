@@ -31,8 +31,8 @@ func::FuncOp genArgMapFunction(PatternRewriter &rewriter, Location loc, func::Fu
 func::FuncOp genEnzymeWrapperFunction(PatternRewriter &rewriter, Location loc, GradOp gradOp,
                                       func::FuncOp argMapFn);
 
-func::FuncOp genBackpropFunction(PatternRewriter &rewriter, Location loc, GradOp gradOp,
-                                 func::FuncOp callee);
+func::FuncOp genBackpropFunction(PatternRewriter &rewriter, Location loc, gradient::GradOp gradOp,
+                                 func::FuncOp callee, func::FuncOp wrapper);
 
 } // namespace gradient
 } // namespace catalyst
