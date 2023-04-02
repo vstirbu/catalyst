@@ -1,7 +1,7 @@
 import sys
 import math
 import cmath
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Tuple, Union, Optional, List
 from inspect import signature as python_signature, _empty as inspect_empty
 
 import jax.numpy as jnp
@@ -18,16 +18,20 @@ PythonCode = str
 PythonObj = Any
 
 
-def compileExpr(e :Expr, use_qjit:bool=True) -> Tuple[PythonObj, PythonCode]:
-    main = FDefStmt(FName("main"), [], POI.fromExpr(
-        e if expr_signature(e) is None else mkCallExpr1(e, CondExpr(0))), qjit=use_qjit)
+def compilePOI(p:POI,
+               use_qjit:bool=True,
+               name:Optional[str]=None,
+               args:Optional[List[Expr]]=None) -> Tuple[PythonObj, PythonCode]:
+    name = name if name is not None else "main"
+    args = args if args is not None else []
+    main = FDefStmt(FName(name), args, p, qjit=use_qjit)
     code = '\n'.join(pstr_stmt(main))
-    o = compile(code, "<compileExpr>", "single")
+    o = compile(code, "<compilePOI>", "single")
     return (o, code)
 
 
-def evalExpr(e: Union[Expr,PythonObj], **kwargs) -> Any:
-    o = compileExpr(e, **kwargs)[0] if isinstance_expr(e) else e
+def evalPOI(p: Union[POI,PythonObj], **kwargs) -> Any:
+    o = compileExpr(p, **kwargs)[0] if isinstance(p,POI) else p
     gctx, lctx = {}, {}
     gctx.update({'qml': qml,
                  'for_loop':for_loop,

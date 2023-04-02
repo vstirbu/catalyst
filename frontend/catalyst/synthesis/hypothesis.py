@@ -35,38 +35,60 @@ def fnames(draw, prefixes=just("fun"))->FName:
 def fdefs(draw,
           names=fnames(just("fun")),
           args=vnames(just("arg"))):
-    return partial(FDefStmt,
-                   fname=draw(name),
-                   ags=draw(lists(args,max_size=4,unique=True)))
+    fname=draw(name)
+    ags=draw(lists(args,max_size=4,unique=True))
+    return (lambda a:
+            FDefStmt(
+                fname=fname,
+                args=args,
+                body=a))
 
 @composite
 def conds(draw,
           cond=sampled_from([trueExpr, falseExpr]),
           style=ControlFlowStyle.Catalyst):
-    return partial(CondExpr, cond=draw(cond), style=style)
+    cond=draw(cond)
+    return (lambda a: (lambda b:
+            CondExpr(
+                cond=cond,
+                trueBranch=a,
+                falseBranch=b,
+                style=style)))
 
 
 @composite
 def forloops(draw,
              lvars=vnames(sampled_from(['i','j','k'])),
+             svars=vnames(sampled_from(['i','j','k'])),
              lbounds=integers(0,10),
              ubounds=integers(0,10),
              style=ControlFlowStyle.Catalyst):
-    return partial(ForLoopExpr,
-                   loopvar=draw(lvars),
-                   lbound=ConstExpr(draw(lbounds)),
-                   ubound=ConstExpr(draw(ubounds)),
-                   style=style)
+    loopvar=draw(lvars)
+    statevar=draw(svars)
+    lbound=ConstExpr(draw(lbounds))
+    ubound=ConstExpr(draw(ubounds))
+    return (lambda a:
+            ForLoopExpr(
+                loopvar=loopvar,
+                statevar=statevar,
+                lbound=lbound,
+                ubound=ubound,
+                body=a,
+                style=style))
 
 @composite
 def whileloops(draw,
-               lname=vnames(sampled_from(['i','j','k'])),
-               lexpr=sampled_from([trueExpr, falseExpr]),
+               lvars=vnames(sampled_from(['i','j','k'])),
+               lexprs=sampled_from([trueExpr, falseExpr]),
                style=ControlFlowStyle.Catalyst):
-    return partial(WhileLoopExpr,
-                   loopvar=draw(lname),
-                   cond=draw(lexpr),
-                   style=style)
+    loopvar=draw(lvars)
+    cond=draw(lexprs)
+    return (lambda a:
+            WhileLoopExpr(
+                loopvar=loopvar,
+                cond=cond,
+                body=a,
+                style=style))
 
 
 @composite

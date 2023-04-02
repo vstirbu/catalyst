@@ -27,6 +27,11 @@ class POI:
     def fromExpr(cls, e:"Expr") -> "POI":
         return POI([],e)
 
+    @classmethod
+    def fE(cls, *args, **kwargs) -> "POI":
+        """ Alias """
+        return cls.fromExpr(*args, **kwargs)
+
 
 
 @dataclass(frozen=True)
@@ -92,6 +97,7 @@ class ForLoopExpr:
     ubound: Expr
     body: POI
     style: ControlFlowStyle
+    statevar: Optional[VName] = None
 
 @dataclass(frozen=True)
 class WhileLoopExpr:

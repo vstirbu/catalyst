@@ -99,10 +99,11 @@ def pstr_expr(expr:Expr,
         accU, lexprU = pstr_expr(e.ubound, state, hint)
         if e.style == ControlFlowStyle.Catalyst:
             st1, nforloop = st.tabulate().issue("forloop")
+            args = ','.join([e.loopvar.val] + ([e.statevar.val] if e.statevar else []))
             return (
                 accL + accU +
                 _in(st, [f"@for_loop({lexprL},{lexprU},1)",
-                         f"def {nforloop}({e.loopvar.val}):"]) +
+                         f"def {nforloop}({args}):"]) +
                 _ne(st, [pstr_stmt(s, st1, hint) for s in e.body.stmts] +
                         [pstr_stmt(RetStmt(e.body.expr), st1, hint)]) +
                 _hi(st1, hint, e.body), f"{nforloop}")
@@ -184,7 +185,7 @@ def pstr_stmt(s:Stmt,
 def pstr_poi(p:POI, state:Optional[PStrState]=None, hint=None) -> List[str]:
     st = state if state is not None else PStrState(0,Suffix(0))
     lines, e = pstr_expr(p.expr, st, hint)
-    return (sum(([pstr_stmt(s, st, hint)] for s in p.stmts), [])[0] +
+    return (sum((pstr_stmt(s, st, hint) for s in p.stmts), []) +
             lines +
             _hi(st, hint, p) +
             _in(st, [f"## {e} ##"]))

@@ -11,26 +11,28 @@ from catalyst.synthesis.grammar import (Expr, RetStmt, FCallExpr, VName, FName, 
                                         as expr_signature, isinstance_expr, innerdefs1)
 from catalyst.synthesis.pprint import pstr_builder, pstr_stmt, pstr_expr, pprint
 from catalyst.synthesis.builder import build
-from catalyst.synthesis.exec import compileExpr, evalExpr
+from catalyst.synthesis.exec import compilePOI, evalPOI
 from catalyst.synthesis.generator import greedy
 from catalyst.synthesis.hypothesis import *
 
 
 VERBOSE:bool = True
 
-def log(s:Union[list,str]) -> None:
-    s='\n'.join(s) if isinstance(s, list) else s
-    try:
-        note(s)
-    except TypeError:
-        if VERBOSE:
-            print(s, file=sys.stderr)
+ExprPart = Callable[[POI],Union[Expr,"ExprPart"]]
+
+def compilePOI_(*args, **kwargs):
+    o,code = compilePOI(*args, **kwargs)
+    note("Generated Python code is:")
+    note(code)
+    return o,code
+
+def evalPOI_(p:POI, use_qjit=True, **kwargs):
+    o,code = compilePOI_(p, use_qjit=use_qjit)
+    return evalPOI(o, **kwargs)
 
 
-def mkExprKwargs(x:callable, arg:POI) -> Dict[str,POI]:
-    """Makes `kwarg` dict passing `arg` to all `x` parameters which dont have default values """
-    return {k:arg for k,v in dict(python_signature(x).parameters).items()
-            if v.default==inspect_empty}
+def saturate(e:Union[Expr, ExprPart], val:POI) -> Expr:
+    return saturate(e(val), val) if isinstance(e,Callable) else e
 
 
 def mkCallExpr1(x:Expr, arg:Expr) -> Expr:
@@ -40,59 +42,67 @@ def mkCallExpr1(x:Expr, arg:Expr) -> Expr:
     fname, anames = astuple(s)
     return FCallExpr(x, [arg for _ in anames])
 
-ExprPart = Callable[[POI],Expr]
-
-def part1(e:callable) -> ExprPart:
-    return (lambda poi: e(**mkExprKwargs(e, poi)))
-
-
-def bind1(a:ExprPart, f:Callable[[List[Expr]],ExprPart])->ExprPart:
-    vs = innerdefs1(a(**mkExprKwargs(a, POI()))) # Rude!
-    return (lambda poi : a(POI.fromExpr(f(list(vs))(poi))))
-
-
-def closeargs(e:Expr, arg:Expr) -> Expr:
-    s = expr_signature(e)
-    if s is not None:
-        fname, anames = s
-        return FCallExpr(e, [arg for _ in anames])
-    else:
-        return e
 
 @given(x=one_of([whileloops(), forloops(), conds()]))
-def test_pprint_fdef(x:callable):
-    e = x(**mkExprKwargs(x, POI()))
-    main = FDefStmt(FName("main"), [], POI.fromExpr(mkCallExpr1(e, ConstExpr(0))))
-    pprint(main)
+def test_pprint_cflow(x:callable):
+    pprint(saturate(x, POI.fE(ConstExpr(33))))
 
 
 @given(x=one_of([whileloops(), forloops(), conds()]))
-def test_pprint_fcall(x:callable):
-    arg=VRefExpr(VName('var1'))
-    pprint(RetStmt(mkCallExpr1(x(**mkExprKwargs(x, POI())),arg)))
+def test_pprint_fdef_ctflow(x:callable):
+    pprint(FDefStmt(FName("main"), [], POI.fromExpr(saturate(x, POI.fE(ConstExpr(33))))))
 
 
 @given(x=one_of([whileloops(), forloops(), conds()]))
-def test_pprint_controlflow(x:callable):
-    pprint(x(**mkExprKwargs(x, POI())))
+def test_pprint_ret_ctflow(x:callable):
+    pprint(RetStmt(saturate(x,POI.fE(ConstExpr(33)))))
 
 
 @given(x=one_of([conds(),whileloops(),forloops()]))
-def test_eq_expr(x:callable):
-    args=mkExprKwargs(x, POI())
-    assert x(**args)==x(**args)
-    args2=mkExprKwargs(x, POI([],x(**args)))
-    assert x(**args)!=x(**args2)
+def test_eq_expr(x):
+    xa=saturate(x, POI())
+    xb=saturate(x, POI())
+    assert xa is not xb
+    assert xa == xb
+    xc=saturate(x, POI.fE(saturate(x,POI())))
+    assert xa != xc
 
 
-
-@mark.parametrize('use_qjit',[True, False])
+@mark.parametrize('use_qjit', [True, False])
 @given(x=complexes(allow_nan=False, allow_infinity=False))
 @settings(max_examples=10)
-def test_eval_expr(x, use_qjit):
-    o,code = compileExpr(ConstExpr(jnp.array([x])), use_qjit)
-    note(code)
-    assert jnp.array([x]) == evalExpr(o)
+def test_eval_const(x, use_qjit):
+    assert jnp.array([x]) == evalPOI_(POI.fE(ConstExpr(jnp.array([x]))), use_qjit)
+
+
+@mark.parametrize('use_qjit', [True, False])
+@given(x=complexes(allow_nan=False, allow_infinity=False), c=conds())
+@settings(max_examples=10)
+def test_eval_cond(c, x, use_qjit):
+    jx = jnp.array([x])
+    x2 = FCallExpr(c(POI.fE(ConstExpr(jx)))(POI.fE(ConstExpr(jx))),[])
+    assert jx == evalPOI_(POI.fE(x2), use_qjit)
+
+
+@mark.parametrize('use_qjit', [True, False])
+@given(x=complexes(allow_nan=False, allow_infinity=False),
+       l=forloops(lvars=just(VName('i')),svars=just(VName('s'))))
+@settings(max_examples=10)
+def test_eval_for(l, x, use_qjit):
+    jx = jnp.array([x])
+    r = FCallExpr(l(POI.fE(VRefExpr(VName('s')))),[ConstExpr(jx)])
+    assert jx == evalPOI_(POI.fE(r), use_qjit)
+
+
+@mark.parametrize('use_qjit', [True, False])
+@given(x=complexes(allow_nan=False, allow_infinity=False),
+       l=whileloops(lvars=just(VName('i')),
+                    lexprs=just(falseExpr)))
+@settings(max_examples=10)
+def test_eval_while(l, x, use_qjit):
+    jx = jnp.array([x])
+    r = FCallExpr(l(POI.fE(VRefExpr(VName('i')))),[ConstExpr(jx)])
+    assert jx == evalPOI_(POI.fE(r), use_qjit)
 
 
 def test_build_mutable_layout():
