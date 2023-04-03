@@ -8,7 +8,7 @@ from pytest import mark
 from dataclasses import astuple
 
 from catalyst.synthesis.grammar import (Expr, RetStmt, FCallExpr, VName, FName, VRefExpr, signature
-                                        as expr_signature, isinstance_expr, innerdefs1)
+                                        as expr_signature, isinstance_expr, innerdefs1, AssignStmt)
 from catalyst.synthesis.pprint import pstr_builder, pstr_stmt, pstr_expr, pprint
 from catalyst.synthesis.builder import build
 from catalyst.synthesis.exec import compilePOI, evalPOI
@@ -27,8 +27,8 @@ def compilePOI_(*args, **kwargs):
     return o,code
 
 def evalPOI_(p:POI, use_qjit=True, **kwargs):
-    o,code = compilePOI_(p, use_qjit=use_qjit)
-    return evalPOI(o, **kwargs)
+    o,code = compilePOI_(p, use_qjit=use_qjit, **kwargs)
+    return evalPOI(o)
 
 
 def saturate(e:Union[Expr, ExprPart], val:POI) -> Expr:
@@ -103,6 +103,13 @@ def test_eval_while(l, x, use_qjit):
     jx = jnp.array([x])
     r = FCallExpr(l(POI.fE(VRefExpr(VName('i')))),[ConstExpr(jx)])
     assert jx == evalPOI_(POI.fE(r), use_qjit)
+
+
+@given(g=qgates, m=qmeasurements)
+@settings(max_examples=10)
+def test_eval_qops(g,m):
+    evalPOI_(POI([AssignStmt.fE(g),RetStmt(m)]), use_qjit=True,
+             qdevice="lightning.qubit", qwires=1)
 
 
 def test_build_mutable_layout():

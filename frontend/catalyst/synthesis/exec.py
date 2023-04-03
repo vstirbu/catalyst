@@ -21,10 +21,11 @@ PythonObj = Any
 def compilePOI(p:POI,
                use_qjit:bool=True,
                name:Optional[str]=None,
-               args:Optional[List[Expr]]=None) -> Tuple[PythonObj, PythonCode]:
+               args:Optional[List[Expr]]=None,
+               **kwargs) -> Tuple[PythonObj, PythonCode]:
     name = name if name is not None else "main"
     args = args if args is not None else []
-    main = FDefStmt(FName(name), args, p, qjit=use_qjit)
+    main = FDefStmt(FName(name), args, p, qjit=use_qjit, **kwargs)
     code = '\n'.join(pstr_stmt(main))
     o = compile(code, "<compilePOI>", "single")
     return (o, code)

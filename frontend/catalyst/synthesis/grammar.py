@@ -125,6 +125,10 @@ class AssignStmt:
     vname: Optional[VName]
     expr: Expr
 
+    @classmethod
+    def fE(cls, e:Expr) -> "AssignStmt":
+        return AssignStmt(None, e)
+
 @dataclass(frozen=True)
 class FDefStmt:
     """ Statement - function declaration """
