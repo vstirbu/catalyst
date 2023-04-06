@@ -6,6 +6,7 @@ from typing import (Any, List, Tuple, Optional, Dict, Union, NoReturn, Set, Call
 from dataclasses import dataclass, field
 from copy import deepcopy
 from enum import Enum
+from functools import reduce
 from jax import Array as JaxArray
 
 
@@ -158,9 +159,8 @@ class Signature:
     ret:str
 
 
-def signature(x: Union[FDefStmt, ForLoopExpr, WhileLoopExpr, CondExpr]
-              ) -> Optional[Signature]:
-    """Return callable expression signature: the "names" list of arguments and the return "type", or
+def signature(x: Union[FDefStmt, Expr]) -> Optional[Signature]:
+    """Return the signature: the "names" list of arguments and the return "type", or
     None for non-callable expressions. Currently, we don't use true type system.
     Note that loops and conditionals are callables in this language. """
     if isinstance(x, FDefStmt):
@@ -194,6 +194,32 @@ def bindUnary(value:POI, function:POI) -> Optional[POI]:
     if (s is None) or (len(s.args) != 1):
         return None
     return bind(value, function, FCallExpr(function.expr, [value.expr]))
+
+
+def saturate_expr(e:Expr, arg:Expr) -> Expr:
+    s = signature(e)
+    return FCallExpr(e, [arg for _ in s.args]) if s else e
+
+
+Acc = Any
+
+def reduce_expr(e:Expr, f:Callable[[Expr,Acc],Acc], acc:Acc) -> Acc:
+    def _down(subexprs):
+        return reduce(lambda acc,se: reduce_expr(se,f,acc), subexprs, f(e,acc))
+    if isinstance(e, FCallExpr):
+        return _down(e.args)
+    elif isinstance(e, CondExpr):
+        return _down([e.trueBranch.expr]+([e.falseBranch.expr] if e.falseBranch else []))
+    elif isinstance(e, ForLoopExpr):
+        return _down([e.lbound, e.ubound, e.body.expr])
+    elif isinstance(e, WhileLoopExpr):
+        return _down([e.cond, e.body.expr])
+    elif isinstance(e, (NoneExpr, VRefExpr, ConstExpr)):
+        return _down([])
+    else:
+        assert_never(e)
+
+
 
 
 

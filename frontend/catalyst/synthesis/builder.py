@@ -46,6 +46,9 @@ class POIWithContext:
 PWC = POIWithContext
 """ A shorter alias for POIWithContext """
 
+PRef = Union[int, PWC]
+""" Index of PWC: either an integer or the referece """
+
 @dataclass
 class Builder:
     """ Builder maintains the program being built and keeps all its
@@ -53,7 +56,7 @@ class Builder:
     # root: POI
     pois: List[POIWithContext]
 
-    def at(self, n:Union[int, PWC]) -> PWC:
+    def at(self, n:PRef) -> PWC:
         if isinstance(n, int):
             return self.pois[n]
         elif isinstance(n, PWC):
@@ -62,7 +65,10 @@ class Builder:
         else:
             raise ValueError("Invalid value passed to Builder.at() as a key")
 
-    def update(self, n:Union[int, PWC], poi:POI, assert_no_delete=False) -> List[PWC]:
+    def vscope_at(self, n:PRef) -> List[VName]:
+        return self.at(n).ctx.get_vscope()
+
+    def update(self, n:PRef, poi:POI, assert_no_delete=False) -> List[PWC]:
         """ Add a new statement at the point of insertion, return the list of new PWCs """
         poic:PWC = self.at(n)
         for i in reversed(range(len(self.pois))):
