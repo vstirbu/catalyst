@@ -69,9 +69,6 @@ class ConstExpr:
     """ Expression - constant """
     val: Union[bool, int, float, complex, JaxArray]
 
-trueExpr = ConstExpr(True)
-falseExpr = ConstExpr(False)
-
 @dataclass(frozen=True)
 class NoneExpr:
     """ Alias for None """
@@ -113,6 +110,20 @@ class FCallExpr:
     """ Expression - calling a callable """
     expr: Union[VRefExpr, CondExpr, ForLoopExpr, WhileLoopExpr]
     args: List[Expr]
+
+    def __hash__(self):
+        return hash((self.expr, tuple(self.args)))
+
+
+trueExpr = ConstExpr(True)
+falseExpr = ConstExpr(False)
+
+def lessExpr(a,b) -> FCallExpr:
+    return FCallExpr(VRefExpr(FName('<')),[a,b])
+
+def addExpr(a,b) -> FCallExpr:
+    return FCallExpr(VRefExpr(FName('+')),[a,b])
+
 
 Stmt = Union["AssignStmt", "FDefStmt", "RetStmt"]
 

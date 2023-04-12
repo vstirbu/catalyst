@@ -60,6 +60,9 @@ TABSTOP:int = 4
 
 HintPrinter = Callable[[POI],List[str]]
 
+def _parens(expr:Expr, expr_str:str) -> str:
+    return expr_str if isinstance(expr, (VRefExpr, ConstExpr)) else f"({expr_str})"
+
 def pstr_expr(expr:Expr,
               state:Optional[PStrState]=None,
               hint:Optional[HintPrinter]=None) -> Tuple[List[str],str]:
@@ -72,7 +75,10 @@ def pstr_expr(expr:Expr,
             lss,le = pstr_expr(ea, state, hint)
             acc_body.extend(lss)
             args.append(le)
-        return acc_name + acc_body, f"{name}({', '.join(args)})"
+        return acc_name + acc_body, (
+            f"{_parens(e.args[0],args[0])} {name} {_parens(e.args[1],args[1])}"
+            if name in ['<','+'] else
+            f"{name}({', '.join(args)})" )
     elif isinstance(e, CondExpr):
         if e.style == ControlFlowStyle.Python:
             assert_never(e.style)

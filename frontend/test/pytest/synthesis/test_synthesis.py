@@ -12,7 +12,7 @@ from catalyst.synthesis.grammar import (Expr, RetStmt, FCallExpr, VName, FName, 
 from catalyst.synthesis.pprint import pstr_builder, pstr_stmt, pstr_expr, pprint
 from catalyst.synthesis.builder import build
 from catalyst.synthesis.exec import compilePOI, evalPOI
-from catalyst.synthesis.generator import greedy
+from catalyst.synthesis.generator import control_flows
 from catalyst.synthesis.hypothesis import *
 
 
@@ -205,7 +205,7 @@ sample_spec:Dict[Expr,int] = {
 }
 
 def run_greedy():
-    for b in greedy(sample_spec):
+    for b in control_flows(sample_spec):
         pprint(b)
 
 
