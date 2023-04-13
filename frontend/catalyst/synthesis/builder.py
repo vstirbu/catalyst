@@ -77,7 +77,7 @@ class Builder:
                 print(f"Removing {i}")
                 assert not assert_no_delete, f"But we do delete {i} when updating {n}!"
                 del self.pois[i]
-        pwcs = contextualize_poi(poi, poic.ctx)
+        pwcs,_ = contextualize_poi(poi, poic.ctx)
         # print(f"Added {len(pwcs)} more")
         self.pois.extend(pwcs)
         poic.poi.stmts = poi.stmts
@@ -146,16 +146,17 @@ def contextualize_stmt(s:Stmt, ctx:Optional[Context]=None) -> List[PWC]:
 
     return acc
 
-def contextualize_poi(poi:POI, ctx:Context) -> List[PWC]:
+def contextualize_poi(poi:POI, ctx:Context) -> Tuple[List[PWC],Context]:
     pwc1 = list()
     ctx = pois_scan_inplace(poi.stmts, ctx, pwc1)
     pwc2 = contextualize_expr(poi.expr, ctx)
-    return pwc1 + pwc2
+    return (pwc1 + pwc2, ctx)
 
 
 def build(poi:POI, vscope:Optional[List[VName]]=None) -> Builder:
     ctx = Context(vscope)
-    return Builder([POIWithContext(poi,ctx)] + contextualize_poi(poi, ctx))
+    pwcs,ctx = contextualize_poi(poi, ctx)
+    return Builder([POIWithContext(poi,ctx)] + pwcs)
 
 
 

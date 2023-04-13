@@ -161,7 +161,7 @@ Program = FDefStmt
 
 
 def assert_never(x: Any) -> NoReturn:
-    raise AssertionError("Unhandled type: {}".format(type(x).__name__))
+    raise RuntimeError("Unhandled type: {}".format(type(x).__name__))
 
 
 @dataclass

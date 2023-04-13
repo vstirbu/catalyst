@@ -16,7 +16,7 @@ from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt,
 
 from .builder import (Builder)
 
-DEFAULT_QDEVICE = "catalyst-lightning"
+DEFAULT_QDEVICE = "lightning.qubit"
 
 suffix:int = 0
 
@@ -141,13 +141,13 @@ def pstr_expr(expr:Expr,
         return [],e.vname.val
     elif isinstance(e, ConstExpr):
         if isinstance(e.val, bool): # Should be above 'int'
-            return [],f"bool({e.val})"
+            return [],f"{e.val}"
         elif isinstance(e.val, int):
-            return [],f"int({e.val})"
+            return [],f"{e.val}"
         elif isinstance(e.val, float):
-            return [],f"float({e.val})"
+            return [],f"{e.val}"
         elif isinstance(e.val, complex):
-            return [],f"complex({e.val})"
+            return [],f"{e.val}"
         elif isinstance(e.val, JaxArray):
             return [],f"Array({e.val.tolist()},dtype={str(e.val.dtype)})"
         else:

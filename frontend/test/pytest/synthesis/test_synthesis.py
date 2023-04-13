@@ -8,7 +8,9 @@ from pytest import mark
 from dataclasses import astuple
 
 from catalyst.synthesis.grammar import (Expr, RetStmt, FCallExpr, VName, FName, VRefExpr, signature
-                                        as expr_signature, isinstance_expr, innerdefs1, AssignStmt)
+                                        as expr_signature, isinstance_expr, innerdefs1, AssignStmt,
+                                        lessExpr, addExpr, ControlFlowStyle as CFS, signature,
+                                        Signature, bind)
 from catalyst.synthesis.pprint import pstr_builder, pstr_stmt, pstr_expr, pprint
 from catalyst.synthesis.builder import build
 from catalyst.synthesis.exec import compilePOI, evalPOI
@@ -158,6 +160,13 @@ def test_build_destructive_update():
     assert s1 == s2
 
 
+def test_build_assign_layout():
+    va = AssignStmt(VName('a'),ConstExpr(33))
+    vb = AssignStmt(VName('b'),ConstExpr(42))
+    l = WhileLoopExpr(VName("i"), trueExpr, POI([vb],VRefExpr(VName('b'))), ControlFlowStyle.Catalyst)
+    b = build(POI([va],l))
+    pprint(b)
+    print(b.pois[0].ctx)
 
 # def test_build_context():
 #     l = WhileLoopExpr(VName("i"), trueExpr, POI(), ControlFlowStyle.Catalyst)
@@ -196,16 +205,52 @@ def test_build_destructive_update():
 #     pprint(o2(POI()))
 #     # assert False
 
+# sample_spec:Dict[Expr,int] = {
+#     WhileLoopExpr(VName("i"), trueExpr, POI(), ControlFlowStyle.Catalyst) : 1,
+#     ForLoopExpr(VName("i"), ConstExpr(0), ConstExpr(10), POI(), ControlFlowStyle.Catalyst) : 2,
+#     # CondExpr(trueExpr, POI(), POI(), ControlFlowStyle.Catalyst) : 1,
+# }
+
+# def run_greedy():
+#     for b in control_flows(sample_spec):
+#         pprint(b)
 
 
-sample_spec:Dict[Expr,int] = {
-    WhileLoopExpr(VName("i"), trueExpr, POI(), ControlFlowStyle.Catalyst) : 1,
-    ForLoopExpr(VName("i"), ConstExpr(0), ConstExpr(10), POI(), ControlFlowStyle.Catalyst) : 2,
-    # CondExpr(trueExpr, POI(), POI(), ControlFlowStyle.Catalyst) : 1,
-}
+sample_spec:List[Expr] = [
+    # WhileLoopExpr(VName("i"), trueExpr, POI(), CFS.Catalyst) : 1,
+    WhileLoopExpr(VName("j1"), lessExpr(VRefExpr(VName("j1")),ConstExpr(1)), POI(), CFS.Catalyst),
+    ForLoopExpr(VName("k1"), ConstExpr(0), ConstExpr(1), POI(), CFS.Catalyst, VName("k2")),
+    # CondExpr(trueExpr, POI(), POI(), CFS.Catalyst) : 1,
+]
 
-def run_greedy():
-    for b in control_flows(sample_spec):
+gate_lib = [
+    (FName("qml.Hadamard"), Signature(['*'],'*')),
+    (FName("qml.X"), Signature(['*'],'*')),
+]
+
+def bindAssign(poi1:POI, fpoi2:Callable[[Expr],POI]):
+    poi2 = fpoi2(poi1.expr)
+    return bind(poi1, poi2, poi2.expr)
+
+
+def run():
+    arg = VName('arg')
+    for b in control_flows(sample_spec, gate_lib, [arg]):
+        print("1. Builder:")
         pprint(b)
+        print("1. Press Enter to compile")
+        input()
+        o,code = compilePOI(
+            bindAssign(b.pois[0].poi,
+                       lambda e: POI([AssignStmt(None,e)],FCallExpr(VRefExpr(FName("qml.state")),[]))),
+            use_qjit=True, name="main", qwires=1, args=[arg])
+        print("2. Compiled code:")
+        print(code)
+        print("2. Press Enter to eval")
+        input()
+        r = evalPOI(o, name="main", args=[(arg,0)])
+        print("3. Evaluation result:")
+        print(r)
+
 
 

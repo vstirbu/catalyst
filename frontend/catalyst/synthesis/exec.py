@@ -33,9 +33,15 @@ def compilePOI(p:POI,
     return (o, code)
 
 
-def evalPOI(p: Union[POI,PythonObj], **kwargs) -> Any:
+def evalPOI(p: Union[POI,PythonObj],
+            args:Optional[List[Tuple[Expr,Any]]],
+            name:Optional[str]=None,
+            **kwargs) -> Any:
     """Evaluate the POI with Python built-in `eval` function in an isolated environment."""
-    o = compileExpr(p, **kwargs)[0] if isinstance(p,POI) else p
+    arg_exprs = list(zip(*args))[0]
+    arg_vals = list(zip(*args))[1]
+    name = name if name is not None else "main"
+    o = compileExpr(p, args=arg_exprs, name=name, **kwargs)[0] if isinstance(p,POI) else p
     gctx, lctx = {}, {}
     gctx.update({'qml': qml,
                  'for_loop':for_loop,
@@ -50,6 +56,6 @@ def evalPOI(p: Union[POI,PythonObj], **kwargs) -> Any:
                  'infj':cmath.infj,
                  'nanj':cmath.nanj})
     s = exec(o, gctx, lctx)
-    r = eval("main()", gctx, lctx)
+    r = eval(f"{name}({','.join(map(str,arg_vals))})", gctx, lctx)
     return r
 
