@@ -5,7 +5,7 @@ from copy import deepcopy
 from hypothesis.strategies import (text, decimals, integers, characters, from_regex, dictionaries,
                                    one_of, lists, recursive, none, booleans, floats, composite,
                                    binary, sets, permutations, sampled_from, data, from_regex,
-                                   uuids, just)
+                                   uuids, just, data)
 
 from .grammar import (VName, FName, FDefStmt, CondExpr, ForLoopExpr, POI, WhileLoopExpr, trueExpr,
                       falseExpr, ControlFlowStyle, ConstExpr, Expr, VRefExpr, bindUnary, signature,

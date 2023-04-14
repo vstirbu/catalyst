@@ -33,13 +33,13 @@ def compilePOI(p:POI,
     return (o, code)
 
 
-def evalPOI(p: Union[POI,PythonObj],
+def evalPOI(p:Union[POI,PythonObj],
             args:Optional[List[Tuple[Expr,Any]]],
             name:Optional[str]=None,
             **kwargs) -> Any:
     """Evaluate the POI with Python built-in `eval` function in an isolated environment."""
-    arg_exprs = list(zip(*args))[0]
-    arg_vals = list(zip(*args))[1]
+    arg_exprs = list(zip(*args))[0] if args is not None and len(args)>0 else []
+    arg_vals = list(zip(*args))[1] if args is not None and len(args)>0 else []
     name = name if name is not None else "main"
     o = compileExpr(p, args=arg_exprs, name=name, **kwargs)[0] if isinstance(p,POI) else p
     gctx, lctx = {}, {}

@@ -95,7 +95,7 @@ class ForLoopExpr:
     ubound: Expr
     body: POI
     style: ControlFlowStyle
-    statevar: Optional[VName] = None
+    statevar: Optional[VName] = None # TODO: Auto-generate this name in `pprint`
 
 @dataclass(frozen=True)
 class WhileLoopExpr:
