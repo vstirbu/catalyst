@@ -218,8 +218,8 @@ def test_build_assign_layout():
 
 sample_spec:List[Expr] = [
     # WhileLoopExpr(VName("i"), trueExpr, POI(), CFS.Catalyst) : 1,
-    WhileLoopExpr(VName("j1"), lessExpr(VRefExpr(VName("j1")),ConstExpr(1)), POI(), CFS.Catalyst),
-    ForLoopExpr(VName("k1"), ConstExpr(0), ConstExpr(1), POI(), CFS.Catalyst, VName("k2")),
+    WhileLoopExpr(VName("j1"), lessExpr(VRefExpr(VName("j1")),ConstExpr(2)), POI(), CFS.Catalyst),
+    ForLoopExpr(VName("k1"), ConstExpr(0), ConstExpr(2), POI(), CFS.Catalyst, VName("k2")),
     # CondExpr(trueExpr, POI(), POI(), CFS.Catalyst) : 1,
 ]
 
@@ -243,14 +243,14 @@ def run():
         o,code = compilePOI(
             bindAssign(b.pois[0].poi,
                        lambda e: POI([AssignStmt(None,e)],FCallExpr(VRefExpr(FName("qml.state")),[]))),
-            use_qjit=True, name="main", qwires=1, args=[arg])
+            use_qjit=True, name="main", qwires=3, args=[arg])
         print("2. Compiled code:")
         print(code)
         print("2. Press Enter to eval")
         input()
-        r = evalPOI(o, name="main", args=[(arg,0)])
-        print("3. Evaluation result:")
-        print(r)
+        # r = evalPOI(o, name="main", args=[(arg,0)])
+        # print("3. Evaluation result:")
+        # print(r)
 
 
 
