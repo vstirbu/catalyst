@@ -1,11 +1,14 @@
+import os
 import sys
 from typing import Any, Dict, Tuple, Union, Callable, Set, List
 from hypothesis import given, note, settings, Verbosity
 from inspect import signature as python_signature, _empty as inspect_empty
+from tempfile import mktemp
 
 import jax.numpy as jnp
 from pytest import mark
 from dataclasses import astuple
+from numpy.testing import assert_allclose
 
 from catalyst.synthesis.grammar import (Expr, RetStmt, FCallExpr, VName, FName, VRefExpr, signature
                                         as expr_signature, isinstance_expr, innerdefs1, AssignStmt,
@@ -14,7 +17,7 @@ from catalyst.synthesis.grammar import (Expr, RetStmt, FCallExpr, VName, FName, 
 
 from catalyst.synthesis.pprint import pstr_builder, pstr_stmt, pstr_expr, pprint, pstr
 from catalyst.synthesis.builder import build
-from catalyst.synthesis.exec import compilePOI, evalPOI
+from catalyst.synthesis.exec import compilePOI, evalPOI, runPOI
 from catalyst.synthesis.generator import control_flows
 from catalyst.synthesis.hypothesis import *
 
@@ -147,8 +150,8 @@ def test_eval_while(l, x, use_qjit):
 def test_eval_qops(g, m):
     evalPOI_(POI([AssignStmt.fE(g)],m),
              use_qjit=True,
-             qdevice="lightning.qubit",
-             qwires=1)
+             qnode_device="lightning.qubit",
+             qnode_wires=1)
 
 
 def test_build_mutable_layout():
@@ -202,8 +205,21 @@ def test_build_assign_layout():
     vb = AssignStmt(VName('b'),ConstExpr(42))
     l = WhileLoopExpr(VName("i"), trueExpr, POI([vb],VRefExpr(VName('b'))), ControlFlowStyle.Catalyst)
     b = build(POI([va],saturate_expr(l, ConstExpr(0))))
-    pprint(b)
+    s = pstr_builder(b)
     print(b.pois[0].ctx)
+
+
+@mark.parametrize('scalar', [0, 8, -2.32323e10, 23.4])
+@mark.parametrize('use_qjit', [True, False])
+def test_run(use_qjit, scalar):
+    val = jnp.array(scalar)
+    source_file = mktemp("source.py")
+    code, res = runPOI(POI.fE(ConstExpr(val)), use_qjit=use_qjit, source_file=source_file)
+    os.remove(source_file)
+    assert res is not None
+    assert_allclose(val, res)
+
+
 
 # def test_build_context():
 #     l = WhileLoopExpr(VName("i"), trueExpr, POI(), ControlFlowStyle.Catalyst)

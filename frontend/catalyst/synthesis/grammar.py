@@ -147,8 +147,8 @@ class FDefStmt:
     fname: FName
     args: List[VName]
     body: POI
-    qwires: Optional[int] = None
-    qdevice: Optional[str] = None
+    qnode_wires: Optional[int] = None
+    qnode_device: Optional[str] = None
     qjit: bool = False
 
 @dataclass(frozen=True)

@@ -7,7 +7,15 @@ from typing import Tuple, Union, List, Optional, NoReturn, Callable
 from itertools import chain
 
 from dataclasses import dataclass
-from jax import Array as JaxArray
+
+try:
+    from jax import Array as JaxArray
+except ImportError:
+    class JaxArray:
+        def __str__(self):
+            return "FakeJaxArray()"
+
+from pennylane.numpy import tensor as PnpArray
 
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt,
                       CondExpr, WhileLoopExpr, FDefStmt, Program, RetStmt,
@@ -187,6 +195,8 @@ def pstr_expr(expr:Expr,
             return [],f"{e.val}"
         elif isinstance(e.val, JaxArray):
             return [],f"Array({e.val.tolist()},dtype={str(e.val.dtype)})"
+        elif isinstance(e.val, PnpArray):
+            return [],f"Array({e.val.tolist()},dtype={str(e.val.dtype)})"
         else:
             assert_never(e.val)
     else:
@@ -201,10 +211,9 @@ def pstr_stmt(s:Stmt,
         return acc + _in(st, [f"{s.vname.val if s.vname else '_'} = {lexpr}"])
     elif isinstance(s, FDefStmt):
         st1 = st.tabulate()
-        qdevice = s.qdevice if s.qdevice is not None else DEFAULT_QDEVICE
         qjit = ["@qjit"] if s.qjit else []
-        qfunc = [f"@qml.qnode(qml.device(\"{qdevice}\", wires={s.qwires}))"] \
-                if s.qwires is not None else []
+        qfunc = [f"@qml.qnode(qml.device(\"{s.qnode_device or 'default.qubit'}\", wires={s.qnode_wires or 1}))"] \
+                if (s.qnode_device is not None) or (s.qnode_wires is not None) else []
         return (
             _in(st, qjit + qfunc +
                 [f"def {s.fname.val}({', '.join([a.val for a in s.args])}):"]) +
