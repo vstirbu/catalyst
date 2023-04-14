@@ -13,7 +13,7 @@ from numpy.testing import assert_allclose
 from catalyst.synthesis.grammar import (Expr, RetStmt, FCallExpr, VName, FName, VRefExpr, signature
                                         as expr_signature, isinstance_expr, innerdefs1, AssignStmt,
                                         lessExpr, addExpr, ControlFlowStyle as CFS, signature,
-                                        Signature, bind, saturate_expr)
+                                        Signature, bind, saturate_expr, saturate_pois2)
 
 from catalyst.synthesis.pprint import pstr_builder, pstr_stmt, pstr_expr, pprint, pstr
 from catalyst.synthesis.builder import build
@@ -48,8 +48,9 @@ def evalPOI_(p:POI, use_qjit=True, args:Optional[List[Tuple[Expr,Any]]]=None, **
     return evalPOI(o, args=arg_all)
 
 
-def saturate_poi(e:Union[Expr, ExprPart], val:POI) -> Expr:
-    return saturate_poi(e(val), val) if isinstance(e,Callable) else e
+def saturate_poi(e:Union[Expr, ExprPart], val:Union[POI, Expr]) -> Expr:
+    val_ = val if isinstance(val, POI) else POI.fE(val)
+    return saturate_poi(e(val_), val) if isinstance(e,Callable) else e
 
 
 def mkCallExpr1(x:Expr, arg:Expr) -> Expr:
@@ -65,7 +66,7 @@ def mkCallExpr1(x:Expr, arg:Expr) -> Expr:
 @settings(verbosity=Verbosity.debug)
 def test_pprint_cflow(d, st):
     x = d.draw(one_of([whileloops(style=st), forloops(style=st), conds(style=st)]))
-    s = pstr(saturate_poi(x, POI.fE(ConstExpr(33))))
+    s = pstr(saturate_poi(x, ConstExpr(33)))
     note(s)
 
 
@@ -75,7 +76,7 @@ def test_pprint_cflow(d, st):
 def test_pprint_cflow_cflow(d, st):
     x = d.draw(one_of([whileloops(style=st), forloops(style=st), conds(style=st)]))
     y = d.draw(one_of([whileloops(style=st), forloops(style=st), conds(style=st)]))
-    s = pstr(saturate_poi(x, POI.fE( saturate_expr( saturate_poi(y, POI.fE( ConstExpr(33) )), ConstExpr(0)))))
+    s = pstr(saturate_poi(x, saturate_expr( saturate_poi(y, ConstExpr(33) ), ConstExpr(0))))
     note(s)
 
 
@@ -85,7 +86,7 @@ def test_pprint_cflow_cflow(d, st):
 def test_pprint_fdef_cflow(d, st):
     x=d.draw(one_of([whileloops(style=st), forloops(style=st), conds(style=st)]))
     s=pstr(FDefStmt(FName("main"), [],
-                    POI.fE( saturate_expr( saturate_poi(x, POI.fE(ConstExpr(33))), ConstExpr(42)))))
+                    POI.fE( saturate_expr( saturate_poi(x, ConstExpr(33)), ConstExpr(42)))))
     note(s)
 
 
@@ -94,7 +95,7 @@ def test_pprint_fdef_cflow(d, st):
 @settings(verbosity=Verbosity.debug)
 def test_pprint_ret_ctflow(d, st):
     x = d.draw(one_of([whileloops(style=st), forloops(style=st), conds(style=st)]))
-    s = pstr(RetStmt(saturate_expr( saturate_poi(x,POI.fE(ConstExpr(33))), ConstExpr(42) )))
+    s = pstr(RetStmt(saturate_expr( saturate_poi(x, ConstExpr(33)), ConstExpr(42) )))
     note(s)
 
 
@@ -104,7 +105,7 @@ def test_eq_expr(x):
     xb=saturate_poi(x, POI())
     assert xa is not xb
     assert xa == xb
-    xc=saturate_poi(x, POI.fE(saturate_poi(x,POI())))
+    xc=saturate_poi(x, saturate_poi(x,POI()))
     assert xa != xc
 
 
@@ -209,12 +210,14 @@ def test_build_assign_layout():
     print(b.pois[0].ctx)
 
 
-@mark.parametrize('scalar', [0, 8, -2.32323e10, 23.4])
+@mark.parametrize('qnode_device', [None, "lightning.qubit"])
 @mark.parametrize('use_qjit', [True, False])
-def test_run(use_qjit, scalar):
+@mark.parametrize('scalar', [0, -2.32323e10])
+def test_run(use_qjit, qnode_device, scalar):
     val = jnp.array(scalar)
     source_file = mktemp("source.py")
-    code, res = runPOI(POI.fE(ConstExpr(val)), use_qjit=use_qjit, source_file=source_file)
+    code, res = runPOI(POI.fE(ConstExpr(val)), use_qjit=use_qjit, qnode_device=qnode_device,
+                       source_file=source_file)
     os.remove(source_file)
     assert res is not None
     assert_allclose(val, res)

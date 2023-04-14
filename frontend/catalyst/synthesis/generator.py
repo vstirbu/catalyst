@@ -7,27 +7,14 @@ from itertools import permutations, product
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt, CondExpr,
                       WhileLoopExpr, FDefStmt, Program, RetStmt, ConstExpr, POI, ForLoopExpr,
                       WhileLoopExpr, trueExpr, falseExpr, ControlFlowStyle as CFS, assert_never,
-                      NoneExpr, reduce_expr, saturate_expr, addExpr, lessExpr, Signature,
-                      AssignStmt, signature)
+                      NoneExpr, saturate_expr, addExpr, lessExpr, Signature,
+                      AssignStmt, signature, get_vars)
 
 from .builder import Builder, contextualize_expr, build
 from .pprint import pprint
 
 def npois(e:Expr) -> int:
     return len(contextualize_expr(e))
-
-
-def evars(e:Expr) -> List[VName]:
-    def _vars(e):
-        if isinstance(e, ForLoopExpr):
-            return [e.loopvar]
-        elif isinstance(e, WhileLoopExpr):
-            return [e.loopvar]
-        elif isinstance(e, VRefExpr):
-            return [e.vname]
-        else:
-            return []
-    return reduce_expr(e, lambda e,acc: acc+_vars(e), [])
 
 
 def expanded_to(ls:List[Any], l:int)->List[Optional[Any]]:
@@ -40,7 +27,7 @@ def control_flows(expr_lib:List[Expr],
     gs = gate_lib
     es = expr_lib
     ps = sum([npois(e) for e in expr_lib], 1)
-    vs = sum([evars(e) for e in expr_lib], free_vars)
+    vs = sum([get_vars(e) for e in expr_lib], free_vars)
     nargs = max(len(s.args) for _,s in gate_lib) + max(len(signature(e).args) for e in expr_lib)
     for e_sample in permutations(es):
         for p_sample in permutations(range(ps)):

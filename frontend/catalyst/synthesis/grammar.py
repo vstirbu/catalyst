@@ -15,11 +15,11 @@ class POI:
     """ Point Of Insertion. By convention, we allow inserting new
     statements strictly at the end of the list of already existing ones. """
     stmts:List["Stmt"]
-    expr:"Expr"
+    expr:Optional["Expr"]
 
     def __init__(self, stmts=None, expr=None):
         self.stmts = stmts if stmts is not None else []
-        self.expr = expr if expr is not None else NoneExpr()
+        self.expr = expr
 
     def __hash__(self):
         return hash((tuple(self.stmts), self.expr))
@@ -207,30 +207,76 @@ def bindUnary(value:POI, function:POI) -> Optional[POI]:
     return bind(value, function, FCallExpr(function.expr, [value.expr]))
 
 
+
+Acc = Any
+
+def reduce_stmt_expr(e:Union[Stmt,Expr], f:Callable[[Union[Stmt,Expr],Acc],Acc], acc:Acc) -> Acc:
+    def _down(subexprs):
+        return reduce(lambda acc,se: reduce_stmt_expr(se,f,acc), subexprs, f(e,acc))
+    if isinstance(e, FCallExpr):
+        return _down([e.expr] + e.args)
+    elif isinstance(e, CondExpr):
+        return _down(e.trueBranch.stmts + [e.trueBranch.expr] +
+                     (e.falseBranch.stmts + [e.falseBranch.expr] if e.falseBranch else []))
+    elif isinstance(e, ForLoopExpr):
+        return _down([e.lbound, e.ubound] + e.body.stmts + ([e.body.expr] if e.body.expr else []))
+    elif isinstance(e, WhileLoopExpr):
+        return _down([e.cond] + e.body.stmts + ([e.body.expr] if e.body.expr else []))
+    elif isinstance(e, (NoneExpr, VRefExpr, ConstExpr)):
+        return _down([])
+    elif isinstance(e, AssignStmt):
+        return _down([e.expr])
+    elif isinstance(e, RetStmt):
+        return _down([e.expr])
+    elif isinstance(e, FDefStmt):
+        return _down(e.body.stmts + ([e.body.expr] if e.body.expr else []))
+    else:
+        assert_never(e)
+
+
+def get_vars(e:Union[Stmt,Expr]) -> List[VName]:
+    def _vars(e):
+        if isinstance(e, ForLoopExpr):
+            return [e.loopvar] + ([e.statevar] if e.statevar else [])
+        elif isinstance(e, WhileLoopExpr):
+            return [e.loopvar]
+        elif isinstance(e, VRefExpr):
+            return [e.vname]
+        elif isinstance(e, FDefStmt):
+            return e.args
+        elif isinstance(e, AssignStmt):
+            return [e.vname] if e.vname else []
+        else:
+            return []
+    return reduce_stmt_expr(e, lambda e,acc: acc+_vars(e), [])
+
+
+
+def get_pois(e:Union[Stmt,Expr]) -> List[POI]:
+    def _pois(e):
+        if isinstance(e, ForLoopExpr):
+            return [e.body]
+        elif isinstance(e, WhileLoopExpr):
+            return [e.body]
+        elif isinstance(e, CondExpr):
+            return [e.trueBranch] + ([e.falseBranch] if e.falseBranch else [])
+        elif isinstance(e, FDefStmt):
+            return [e.body]
+        else:
+            return []
+    return reduce_stmt_expr(e, lambda e,acc: acc+_pois(e), [])
+
+
 def saturate_expr(e:Expr, arg:Expr) -> Expr:
     s = signature(e)
     return FCallExpr(e, [arg for _ in s.args]) if s else e
 
 
-Acc = Any
-
-def reduce_expr(e:Expr, f:Callable[[Expr,Acc],Acc], acc:Acc) -> Acc:
-    def _down(subexprs):
-        return reduce(lambda acc,se: reduce_expr(se,f,acc), subexprs, f(e,acc))
-    if isinstance(e, FCallExpr):
-        return _down(e.args)
-    elif isinstance(e, CondExpr):
-        return _down([e.trueBranch.expr]+([e.falseBranch.expr] if e.falseBranch else []))
-    elif isinstance(e, ForLoopExpr):
-        return _down([e.lbound, e.ubound, e.body.expr])
-    elif isinstance(e, WhileLoopExpr):
-        return _down([e.cond, e.body.expr])
-    elif isinstance(e, (NoneExpr, VRefExpr, ConstExpr)):
-        return _down([])
-    else:
-        assert_never(e)
-
-
-
-
+def saturate_pois2(e:Expr, arg:Union[POI,Expr]) -> Expr:
+    e2 = deepcopy(e)
+    arg = arg if isinstance(arg, POI) else POI.fromExpr(arg)
+    for poi in get_pois(e2):
+        poi.stmts = deepcopy(arg.stmts)
+        poi.expr = deepcopy(arg.expr)
+    return e2
 

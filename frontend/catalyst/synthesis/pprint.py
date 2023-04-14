@@ -87,13 +87,17 @@ def pstr_expr(expr:Expr,
             st1, svar = st.tabulate().issue("_cond")
             true_part = (
                 _in(st, [f"if {scond}:"]) +
-                _ne(st, sum([pstr_stmt(s, st1, hint) for s in e.trueBranch.stmts], []) +
-                        pstr_stmt(AssignStmt(VName(svar), e.trueBranch.expr), st1, hint)) +
+                _ne(st,
+                    sum([pstr_stmt(s, st1, hint) for s in e.trueBranch.stmts], []) +
+                    (pstr_stmt(AssignStmt(VName(svar), e.trueBranch.expr), st1, hint) if
+                     e.trueBranch.expr else [])) +
                 _hi(st1, hint, e.trueBranch))
             false_part = (
                 _in(st, ["else:"]) +
-                _ne(st, sum([pstr_stmt(s, st1, hint) for s in e.falseBranch.stmts], []) +
-                        pstr_stmt(AssignStmt(VName(svar), e.falseBranch.expr), st1, hint)) +
+                _ne(st,
+                    sum([pstr_stmt(s, st1, hint) for s in e.falseBranch.stmts], []) +
+                    (pstr_stmt(AssignStmt(VName(svar), e.falseBranch.expr), st1, hint) if
+                     e.falseBranch.expr else [])) +
                 _hi(st1, hint, e.falseBranch)) if e.falseBranch else []
             return (acc + true_part + false_part, svar)
         elif e.style == ControlFlowStyle.Catalyst:
@@ -103,13 +107,13 @@ def pstr_expr(expr:Expr,
                 _in(st, [f"@cond({lcond})",
                          f"def {nmcond}():"]) +
                 _ne(st, sum([pstr_stmt(s, st1, hint) for s in e.trueBranch.stmts], []) +
-                        pstr_stmt(RetStmt(e.trueBranch.expr), st1, hint)) +
+                        (pstr_stmt(RetStmt(e.trueBranch.expr), st1, hint) if e.trueBranch.expr else [])) +
                 _hi(st1, hint, e.trueBranch))
             false_part = (
                 _in(st, [f"@{nmcond}.otherwise",
                          f"def {nmcond}():"]) +
                 _ne(st, sum([pstr_stmt(s, st1, hint) for s in e.falseBranch.stmts], []) +
-                        pstr_stmt(RetStmt(e.falseBranch.expr), st1, hint)) +
+                        (pstr_stmt(RetStmt(e.falseBranch.expr), st1, hint) if e.falseBranch.expr else [])) +
                 _hi(st1, hint, e.falseBranch)) if e.falseBranch else []
             return (acc + true_part + false_part, f"{nmcond}()")
         else:
@@ -125,7 +129,7 @@ def pstr_expr(expr:Expr,
                 accArg + accL + accU +
                 _in(st, [f"for {e.loopvar.val} in range({lexprL},{lexprU}):"]) +
                 _ne(st, sum([pstr_stmt(s, st1, hint) for s in e.body.stmts], []) +
-                        pstr_stmt(AssignStmt(VName(svar),e.body.expr), st1, hint)) +
+                        (pstr_stmt(AssignStmt(VName(svar),e.body.expr), st1, hint) if e.body.expr else [])) +
                 _hi(st1, hint, e.body), svar)
         elif e.style == ControlFlowStyle.Catalyst:
             accArg, sarg = pstr_expr(arg_expr[0], st, hint)
@@ -137,7 +141,7 @@ def pstr_expr(expr:Expr,
                 _in(st, [f"@for_loop({lexprL},{lexprU},1)",
                          f"def {nforloop}({args}):"]) +
                 _ne(st, sum([pstr_stmt(s, st1, hint) for s in e.body.stmts], []) +
-                        pstr_stmt(RetStmt(e.body.expr), st1, hint)) +
+                        (pstr_stmt(RetStmt(e.body.expr), st1, hint) if e.body.expr else [])) +
                 _hi(st1, hint, e.body))
             return (accArg + accL + accU + accLoop, f"{nforloop}({sarg})")
         else:
@@ -153,7 +157,7 @@ def pstr_expr(expr:Expr,
                 accCond +
                 _in(st, [f"while {lexpr}:"]) +
                 _ne(st, sum([pstr_stmt(s, st1, hint) for s in e.body.stmts], []) +
-                        pstr_stmt(AssignStmt(e.loopvar, e.body.expr), st1, hint)) +
+                        (pstr_stmt(AssignStmt(e.loopvar, e.body.expr), st1, hint) if e.body.expr else [])) +
                 _hi(st1, hint, e.body),
                 e.loopvar.val)
         elif e.style == ControlFlowStyle.Catalyst:
@@ -165,7 +169,7 @@ def pstr_expr(expr:Expr,
                 _in(st, [f"@while_loop(lambda {e.loopvar.val}:{lexpr})",
                          f"def {nwhileloop}({e.loopvar.val}):"]) +
                 _ne(st, sum([pstr_stmt(s, st1, hint) for s in e.body.stmts],[]) +
-                        pstr_stmt(RetStmt(e.body.expr), st1, hint)) +
+                        (pstr_stmt(RetStmt(e.body.expr), st1, hint) if e.body.expr else [])) +
                 _hi(st1, hint, e.body), f"{nwhileloop}({sarg})")
         else:
             assert_never(s.style)
@@ -218,7 +222,7 @@ def pstr_stmt(s:Stmt,
             _in(st, qjit + qfunc +
                 [f"def {s.fname.val}({', '.join([a.val for a in s.args])}):"]) +
             _ne(st, sum([pstr_stmt(s, st1, hint) for s in s.body.stmts],[]) +
-                    pstr_stmt(RetStmt(s.body.expr), st1, hint)) +
+                    (pstr_stmt(RetStmt(s.body.expr), st1, hint) if s.body.expr else [])) +
             _hi(st1, hint, s.body))
     elif isinstance(s, RetStmt):
         if s.expr is not None:
