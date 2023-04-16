@@ -15,7 +15,8 @@ from catalyst.synthesis.grammar import (Expr, RetStmt, FCallExpr, VName, FName, 
                                         as expr_signature, isinstance_expr, AssignStmt,
                                         lessExpr, addExpr, eqExpr, ControlFlowStyle as CFS, signature,
                                         Signature, bind, saturate_expr, saturates_expr1,
-                                        saturates_poi1, saturate_expr1, saturate_poi1)
+                                        saturates_poi1, saturate_expr1, saturate_poi1, assignStmt,
+                                        assignStmt_, callExpr)
 
 from catalyst.synthesis.pprint import (pstr_builder, pstr_stmt, pstr_expr, pprint, pstr,
                                        DEFAULT_CFSTYLE)
@@ -143,7 +144,7 @@ def test_eval_while(l, x, use_qjit):
 @given(g=qgates, m=qmeasurements)
 @settings(max_examples=100, verbosity=Verbosity.debug)
 def test_eval_qops(g, m):
-    evalPOI_(POI([AssignStmt.fE(g)],m),
+    evalPOI_(POI([assignStmt_(g)],m),
              use_qjit=True,
              qnode_device="lightning.qubit",
              qnode_wires=1)
@@ -196,10 +197,11 @@ def test_build_destructive_update():
 
 
 def test_build_assign_layout():
-    va = AssignStmt(VName('a'),ConstExpr(33))
-    vb = AssignStmt(VName('b'),ConstExpr(42))
-    l = WhileLoopExpr(VName("i"), trueExpr, POI([vb],VRefExpr(VName('b'))), ControlFlowStyle.Catalyst)
-    b = build(POI([va],saturate_expr1(l, 0)))
+    va = assignStmt(VName('a'),33)
+    vb = assignStmt(VName('b'),42)
+    l = WhileLoopExpr(VName("i"), trueExpr,
+                      POI([vb],VName('b')), ControlFlowStyle.Catalyst)
+    b = build(POI([va], saturate_expr1(l, 0)))
     s = pstr_builder(b)
     print(b.pois[0].ctx)
 

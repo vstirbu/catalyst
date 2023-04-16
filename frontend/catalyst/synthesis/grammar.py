@@ -21,7 +21,7 @@ class POI:
 
     def __init__(self, stmts=None, expr=None):
         self.stmts = stmts if stmts is not None else []
-        self.expr = expr
+        self.expr = bless_expr(expr) if expr is not None else None
 
     def __hash__(self):
         return hash((tuple(self.stmts), self.expr))
@@ -31,7 +31,7 @@ class POI:
 
     @classmethod
     def fromExpr(cls, e:"ExprLike") -> "POI":
-        return POI([],bless_expr(e))
+        return POI([], e)
 
     @classmethod
     def fE(cls, *args, **kwargs) -> "POI":
