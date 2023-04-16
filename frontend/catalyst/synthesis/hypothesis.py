@@ -65,8 +65,8 @@ def forloops(draw,
              style=ControlFlowStyle.Default):
     loopvar=draw(lvars)
     statevar=draw(svars)
-    lbound=ConstExpr(draw(lbounds))
-    ubound=ConstExpr(draw(ubounds))
+    lbound=POI.fE(ConstExpr(draw(lbounds)))
+    ubound=POI.fE(ConstExpr(draw(ubounds)))
     return partial(ForLoopExpr,
                 loopvar=loopvar,
                 statevar=statevar,

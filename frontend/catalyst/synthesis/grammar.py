@@ -26,6 +26,9 @@ class POI:
     def __hash__(self):
         return hash((tuple(self.stmts), self.expr))
 
+    def isempty(self) -> bool:
+        return len(self.stmts)==0 and (self.expr is None)
+
     @classmethod
     def fromExpr(cls, e:"ExprLike") -> "POI":
         return POI([],bless_expr(e))
@@ -100,8 +103,8 @@ class CondExpr:
 class ForLoopExpr:
     """ Expression - for loop """
     loopvar: VName
-    lbound: Expr
-    ubound: Expr
+    lbound: POI
+    ubound: POI
     body: POI
     style: ControlFlowStyle
     statevar: Optional[VName] = None # TODO: Auto-generate this name in `pprint`
@@ -124,20 +127,29 @@ class FCallExpr:
         return hash((self.expr, tuple(self.args)))
 
 
+ExprLike = Union[Expr, ConstExprVal, VName, FName]
+
+def isinstance_exprlike(e:Any) -> bool:
+    return isinstance_expr(e) or isinstance_cval(e) or isinstance(e, (VName, FName))
+
 trueExpr = ConstExpr(True)
 falseExpr = ConstExpr(False)
 
+def callExpr(e:ExprLike, args:List[ExprLike]) -> FCallExpr:
+    return FCallExpr(bless_expr(e), [bless_expr(e) for e in args])
+
 def lessExpr(a,b) -> FCallExpr:
-    return FCallExpr(VRefExpr(FName('<')),[bless_expr(e) for e in [a,b]])
+    return callExpr(FName('<'),[a,b])
 
 def addExpr(a,b) -> FCallExpr:
-    return FCallExpr(VRefExpr(FName('+')),[bless_expr(e) for e in [a,b]])
+    return callExpr(FName('+'),[a,b])
 
 def neqExpr(a,b) -> FCallExpr:
-    return FCallExpr(VRefExpr(FName('!=')),[bless_expr(e) for e in [a,b]])
+    return callExpr(FName('!='),[a,b])
 
 def eqExpr(a,b) -> FCallExpr:
-    return FCallExpr(VRefExpr(FName('==')),[bless_expr(e) for e in [a,b]])
+    return callExpr(FName('=='),[a,b])
+
 
 Stmt = Union["AssignStmt", "FDefStmt", "RetStmt"]
 
@@ -154,6 +166,12 @@ class AssignStmt:
     @classmethod
     def fE(cls, e:Expr) -> "AssignStmt":
         return AssignStmt(None, e)
+
+def assignStmt(v, e):
+    return AssignStmt(v, bless_expr(e))
+
+def assignStmt_(e):
+    return assignStmt(None, e)
 
 @dataclass(frozen=True)
 class FDefStmt:
@@ -177,11 +195,6 @@ Program = FDefStmt
 def assert_never(x: Any) -> NoReturn:
     raise RuntimeError("Unhandled type: {}".format(type(x).__name__))
 
-
-ExprLike = Union[Expr, ConstExprVal, VName, FName]
-
-def isinstance_exprlike(e:Any) -> bool:
-    return isinstance_expr(e) or isinstance_cval(e) or isinstance(e, [VName, FName])
 
 def bless_expr(e:ExprLike) -> Expr:
     if isinstance_expr(e):
@@ -233,15 +246,16 @@ Acc = Any
 def reduce_stmt_expr(e:Union[Stmt,Expr], f:Callable[[Union[Stmt,Expr],Acc],Acc], acc:Acc) -> Acc:
     def _down(subexprs):
         return reduce(lambda acc,se: reduce_stmt_expr(se,f,acc), subexprs, f(e,acc))
+    def _unpoi(poi):
+        return poi.stmts + ([poi.expr] if poi.expr else [])
     if isinstance(e, FCallExpr):
         return _down([e.expr] + e.args)
     elif isinstance(e, CondExpr):
-        return _down((e.trueBranch.stmts + [e.trueBranch.expr] if e.trueBranch.expr else []) +
-                     (e.falseBranch.stmts + [e.falseBranch.expr] if e.falseBranch and e.falseBranch.expr else []))
+        return _down(_unpoi(e.trueBranch) + (_unpoi(e.falseBranch) if e.falseBranch else []))
     elif isinstance(e, ForLoopExpr):
-        return _down([e.lbound, e.ubound] + e.body.stmts + ([e.body.expr] if e.body.expr else []))
+        return _down(_unpoi(e.lbound) + _unpoi(e.ubound) + _unpoi(e.body))
     elif isinstance(e, WhileLoopExpr):
-        return _down([e.cond] + e.body.stmts + ([e.body.expr] if e.body.expr else []))
+        return _down([e.cond] + _unpoi(e.body))
     elif isinstance(e, (NoneExpr, VRefExpr, ConstExpr)):
         return _down([])
     elif isinstance(e, AssignStmt):
@@ -261,7 +275,7 @@ def get_vars(e:Union[Stmt,Expr]) -> List[VName]:
         elif isinstance(e, WhileLoopExpr):
             return [e.statevar]
         elif isinstance(e, VRefExpr):
-            return [e.vname]
+            return [e.vname] if isinstance(e.vname, VName) else []
         elif isinstance(e, FDefStmt):
             return e.args
         elif isinstance(e, AssignStmt):
@@ -275,7 +289,7 @@ def get_vars(e:Union[Stmt,Expr]) -> List[VName]:
 def get_pois(e:Union[Stmt,Expr]) -> List[POI]:
     def _pois(e):
         if isinstance(e, ForLoopExpr):
-            return [e.body]
+            return [e.lbound, e.ubound, e.body]
         elif isinstance(e, WhileLoopExpr):
             return [e.body]
         elif isinstance(e, CondExpr):
@@ -289,8 +303,8 @@ def get_pois(e:Union[Stmt,Expr]) -> List[POI]:
 
 def saturate_expr(e:ExprLike, args:Iterable[ExprLike]) -> Expr:
     e2 = bless_expr(deepcopy(e))
-    s = signature(e)
-    return FCallExpr(e, [bless_expr(next(args)) for _ in s.args]) if s else e
+    s = signature(e2)
+    return FCallExpr(e2, [bless_expr(next(args)) for _ in s.args]) if s else e2
 
 def saturate_poi(e:ExprLike, args:Iterable[Union[POI,ExprLike]]) -> Expr:
     e2 = bless_expr(deepcopy(e))

@@ -144,8 +144,8 @@ def pstr_expr(expr:ExprLike,
         if _style(e.style, opt) == ControlFlowStyle.Python:
             st1 = st.tabulate()
             accArg = pstr_stmt(AssignStmt(e.statevar, arg_expr[0]), st, opt) if e.statevar else []
-            accL, lexprL = pstr_expr(e.lbound, st, opt)
-            accU, lexprU = pstr_expr(e.ubound, st, opt)
+            accL, lexprL = pstr_poi(e.lbound, st, opt)
+            accU, lexprU = pstr_poi(e.ubound, st, opt)
             return (
                 accArg + accL + accU +
                 _in(st, [f"for {e.loopvar.val} in range({lexprL},{lexprU}):"]) +
@@ -156,8 +156,8 @@ def pstr_expr(expr:ExprLike,
 
         elif _style(e.style, opt) == ControlFlowStyle.Catalyst:
             accArg, sarg = pstr_expr(arg_expr[0], st, opt)
-            accL, lexprL = pstr_expr(e.lbound, st, opt)
-            accU, lexprU = pstr_expr(e.ubound, st, opt)
+            accL, lexprL = pstr_poi(e.lbound, st, opt)
+            accU, lexprU = pstr_poi(e.ubound, st, opt)
             st1, nforloop = st.tabulate().issue("forloop")
             args = ','.join([e.loopvar.val] + ([e.statevar.val] if e.statevar else []))
             accLoop = (
@@ -257,13 +257,11 @@ def pstr_stmt(s:Stmt,
     else:
         assert_never(s)
 
-def pstr_poi(p:POI, state=None, opt=None) -> List[str]:
+def pstr_poi(p:POI, state=None, opt=None, arg_expr=None) -> Tuple[List[str],str]:
     st = state if state is not None else PStrState(0,Suffix(0))
-    lines, e = pstr_expr(p.expr, st, opt, arg_expr=[VRefExpr(VName('<?>'))])
+    lines, e = pstr_expr(p.expr, st, opt, arg_expr)
     return (sum((pstr_stmt(s, st, opt) for s in p.stmts), []) +
-            lines +
-            _hi(st, opt, p) +
-            _in(st, [f"## {e} ##"]))
+            lines + _hi(st, opt, p), e)
 
 def builder_hint_printer(b):
     def _hp(poi:POI) -> List[str]:
@@ -273,9 +271,9 @@ def builder_hint_printer(b):
         return []
     return _hp
 
-def pstr_builder(b:Builder, st=None, opt=None) -> List[str]:
+def pstr_builder(b:Builder, st=None, opt=None) -> Tuple[List[str],str]:
     opt = opt if opt else PStrOptions(DEFAULT_CFSTYLE, builder_hint_printer(b))
-    return pstr_poi(b.pois[0].poi, st, opt)
+    return pstr_poi(b.pois[0].poi, st, opt, arg_expr=[VRefExpr(VName('<?>'))])
 
 def pstr_prog(p:Program, state=None, opt=None) -> List[str]:
     """ Pretty-print the program """
@@ -288,7 +286,8 @@ def pstr(p:Union[Builder, Program, Stmt, ExprLike], default_cfstyle=DEFAULT_CFST
     """
     if isinstance(p, Builder):
         opt = PStrOptions(default_cfstyle, builder_hint_printer(p))
-        return '\n'.join(pstr_builder(p, None, opt))
+        lines, tail = pstr_builder(p, None, opt)
+        return '\n'.join(lines+[f"## {tail} ##"])
     else:
         opt = PStrOptions(default_cfstyle)
         if isinstance(p, Program):
@@ -296,8 +295,8 @@ def pstr(p:Union[Builder, Program, Stmt, ExprLike], default_cfstyle=DEFAULT_CFST
         elif isinstance_stmt(p):
             return '\n'.join(pstr_stmt(p, None, opt))
         elif isinstance_exprlike(p):
-            stmts,expr = pstr_expr(p, None, opt, arg_expr=[VRefExpr(VName("<?>"))])
-            return '\n'.join(stmts + [f"## {expr} ##"])
+            stmts,tail = pstr_expr(p, None, opt, arg_expr=[VRefExpr(VName("<?>"))])
+            return '\n'.join(stmts + [f"## {tail} ##"])
         else:
             assert_never(p)
 

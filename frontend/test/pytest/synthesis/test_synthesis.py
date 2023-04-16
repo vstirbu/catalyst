@@ -185,11 +185,11 @@ def test_build_destructive_update():
     l = WhileLoopExpr(VName("i"), trueExpr, POI(), ControlFlowStyle.Catalyst)
     c = CondExpr(trueExpr, POI(), POI(), ControlFlowStyle.Catalyst)
     b = build(POI())
-    b.update(0, POI.fE(saturate_expr1(l, 0)))
-    b.update(1, POI.fE(saturate_expr1(c, 1)))
+    b.update(0, POI.fE(saturate_expr1(l, 0)), ignore_nonempty=False)
+    b.update(1, POI.fE(saturate_expr1(c, 1)), ignore_nonempty=False)
     assert len(b.pois)==4
     s1 = pstr_builder(b)
-    b.update(0, b.pois[0].poi)
+    b.update(0, b.pois[0].poi, ignore_nonempty=False)
     assert len(b.pois)==4
     s2 = pstr_builder(b)
     assert s1 == s2
@@ -269,7 +269,7 @@ def test_run(use_qjit, qnode_device, scalar):
 sample_spec:List[Expr] = [
     # WhileLoopExpr(VName("i"), trueExpr, POI(), CFS.Catalyst) : 1,
     WhileLoopExpr(VName("j1"), lessExpr(VName("j1"),2), POI(), CFS.Default),
-    ForLoopExpr(VName("k1"), ConstExpr(0), ConstExpr(2), POI(), CFS.Default, VName("k2")),
+    ForLoopExpr(VName("k1"), POI.fE(0), POI.fE(2), POI(), CFS.Default, VName("k2")),
     # CondExpr(trueExpr, POI(), POI(), CFS.Catalyst) : 1,
 ]
 
@@ -312,3 +312,32 @@ def run():
 
 
 
+sample_spec2:List[Expr] = [
+    # WhileLoopExpr(VName("i"), trueExpr, POI(), CFS.Catalyst) : 1,
+    ForLoopExpr(VName("k1"), POI(), POI(), POI(), CFS.Default, VName("k2")),
+    # CondExpr(trueExpr, POI(), POI(), CFS.Catalyst) : 1,
+]
+
+def run2():
+    arg = VName('arg')
+    for b in control_flows(sample_spec2, [], [arg]):
+        print("1. Builder:")
+        pprint(b)
+        print("1. Press Enter to compile")
+        input()
+        o1,code1 = compilePOI(
+            bindAssign(b.pois[0].poi,
+                       lambda e: POI([AssignStmt(None,e)],FCallExpr(VRefExpr(FName("qml.state")),[]))),
+            use_qjit=True, name="main", qnode_wires=3, qnode_device="lightning.qubit", args=[arg],
+            default_cfstyle=ControlFlowStyle.Catalyst)
+        o2,code2 = compilePOI(
+            bindAssign(b.pois[0].poi,
+                       lambda e: POI([AssignStmt(None,e)],FCallExpr(VRefExpr(FName("qml.state")),[]))),
+            use_qjit=False, name="main", qnode_wires=3, args=[arg],
+            default_cfstyle=ControlFlowStyle.Python)
+        print("2. Compiled code:")
+        print(code1)
+        print("(^^^ Catalyst, Python vvv)")
+        print(code2)
+        # print("2. Press Enter to eval")
+        input()

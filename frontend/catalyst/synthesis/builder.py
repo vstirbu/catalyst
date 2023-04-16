@@ -63,9 +63,12 @@ class Builder:
 
     def at(self, n:PRef) -> PWC:
         if isinstance(n, int):
+            if not 0<=n<len(self.pois):
+                raise IndexError(f"Builder: POI index {n} is out of bound")
             return self.pois[n]
         elif isinstance(n, PWC):
-            assert n in self.pois
+            if n not in self.pois:
+                raise IndexError(f"Builder: POI {n} is out of bound")
             return n
         else:
             raise ValueError("Invalid value passed to Builder.at() as a key")
@@ -73,7 +76,7 @@ class Builder:
     def vscope_at(self, n:PRef) -> List[VName]:
         return self.at(n).ctx.get_vscope()
 
-    def update(self, n:PRef, poi:POI, assert_no_delete=False) -> List[PWC]:
+    def update(self, n:PRef, poi:POI, ignore_nonempty=True, assert_no_delete=False) -> List[PWC]:
         """ Add a new statement at the point of insertion, return the list of new PWCs """
         poic:PWC = self.at(n)
         for i in reversed(range(len(self.pois))):
@@ -82,15 +85,15 @@ class Builder:
                 print(f"Removing {i}")
                 assert not assert_no_delete, f"But we do delete {i} when updating {n}!"
                 del self.pois[i]
-        pwcs,_ = contextualize_poi(poi, poic.ctx)
-        # print(f"Added {len(pwcs)} more")
-        self.pois.extend(pwcs)
-        poic.poi.stmts = poi.stmts
-        poic.poi.expr = poi.expr
+        pwcs,_ = _contextualize_poi(poi, poic.ctx)
         for pwc in pwcs:
             assert is_parent_of(poic.ctx, pwc.ctx)
-            assert pwc in self.pois
-        return pwcs
+            # assert pwc in self.pois
+        pwcs2 = [p for p in pwcs if p.poi.isempty()] if ignore_nonempty else pwcs
+        self.pois.extend(pwcs2)
+        poic.poi.stmts = poi.stmts
+        poic.poi.expr = poi.expr
+        return pwcs2
 
 
 def pois_scan_inplace(ss:List[Stmt], ctx:Context, acc:List[PWC]) -> Context:
@@ -104,32 +107,19 @@ def pois_scan_inplace(ss:List[Stmt], ctx:Context, acc:List[PWC]) -> Context:
 def contextualize_expr(e:Expr, ctx:Optional[Context]=None) -> List[PWC]:
     acc:List[PWC] = list()
     if isinstance(e, CondExpr):
-        ctx1 = Context(parent=ctx)
-        ctx1 = pois_scan_inplace(e.trueBranch.stmts, ctx1, acc)
-        acc.append(POIWithContext(e.trueBranch, ctx1))
-        if e.trueBranch.expr is not None:
-            acc.extend(contextualize_expr(e.trueBranch.expr, ctx1))
+        ctx1 = contextualize_poi_inplace(e.trueBranch, Context(parent=ctx), acc)
         if e.falseBranch is not None:
-            ctx2 = Context(parent=ctx)
-            ctx2 = pois_scan_inplace(e.falseBranch.stmts, ctx2, acc)
-            acc.append(POIWithContext(e.falseBranch, ctx2))
-            if e.falseBranch.expr is not None:
-                acc.extend(contextualize_expr(e.falseBranch.expr, ctx2))
+            contextualize_poi_inplace(e.falseBranch, Context(parent=ctx), acc)
     elif isinstance(e, ForLoopExpr):
-        acc.extend(contextualize_expr(e.lbound, ctx))
-        acc.extend(contextualize_expr(e.ubound, ctx))
-        ctx1 = Context(parent=ctx, statevar=e.statevar, vscope=[e.loopvar])
-        ctx1 = pois_scan_inplace(e.body.stmts, ctx1, acc)
-        acc.append(PWC(e.body, ctx1))
-        if e.body.expr is not None:
-            acc.extend(contextualize_expr(e.body.expr, ctx1))
+        contextualize_poi_inplace(e.lbound, Context(parent=ctx), acc)
+        contextualize_poi_inplace(e.ubound, Context(parent=ctx), acc)
+        ctx1 = Context(parent=ctx, statevar=e.statevar,
+                       vscope=[e.loopvar] + ([e.statevar] if e.statevar else []))
+        contextualize_poi_inplace(e.body, ctx1, acc)
     elif isinstance(e, WhileLoopExpr):
         acc.extend(contextualize_expr(e.cond, ctx))
         ctx1 = Context(parent=ctx, statevar=e.statevar, vscope=[e.statevar])
-        ctx1 = pois_scan_inplace(e.body.stmts, ctx1, acc)
-        acc.append(PWC(e.body, ctx1))
-        if e.body.expr is not None:
-            acc.extend(contextualize_expr(e.body.expr, ctx1))
+        contextualize_poi_inplace(e.body, ctx1, acc)
     elif isinstance(e, FCallExpr):
         acc.extend(contextualize_expr(e.expr, ctx))
         for a in e.args:
@@ -147,24 +137,26 @@ def contextualize_stmt(s:Stmt, ctx:Optional[Context]=None) -> List[PWC]:
         if s.expr is not None:
             acc.extend(contextualize_expr(s.expr, ctx))
     elif isinstance(s, FDefStmt):
-        ctx1 = Context(s.args,parent=ctx)
-        ctx1 = pois_scan_inplace(s.body.stmts, ctx1, acc)
-        acc.append(POIWithContext(s.body, ctx1))
+        contextualize_poi_inplace(s.body, Context(s.args,parent=ctx), acc)
     else:
         assert_never(s)
 
     return acc
 
-def contextualize_poi(poi:POI, ctx:Context) -> Tuple[List[PWC],Context]:
+def _contextualize_poi(poi:POI, ctx:Context) -> Tuple[List[PWC],Context]:
     pwc1 = list()
     ctx = pois_scan_inplace(poi.stmts, ctx, pwc1)
     pwc2 = contextualize_expr(poi.expr, ctx) if poi.expr else []
     return (pwc1 + pwc2, ctx)
 
+def contextualize_poi_inplace(poi:POI, ctx:Context, acc:List[PWC]) -> Context:
+    pwcs,ctx2 = _contextualize_poi(poi, ctx)
+    acc.extend([POIWithContext(poi, ctx2)] + pwcs)
+    return ctx
 
 def build(poi:POI, vscope:Optional[List[VName]]=None) -> Builder:
     ctx = Context(vscope)
-    pwcs,ctx = contextualize_poi(poi, ctx)
+    pwcs,ctx = _contextualize_poi(poi, ctx)
     return Builder([POIWithContext(poi,ctx)] + pwcs)
 
 

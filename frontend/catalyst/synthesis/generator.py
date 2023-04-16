@@ -2,19 +2,19 @@ from typing import (Iterable, Dict, Union, List, Optional, NoReturn, Callable, T
 from dataclasses import dataclass, astuple
 from copy import deepcopy
 from functools import reduce
-from itertools import permutations, product
+from itertools import permutations, product, chain, cycle
 
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt, CondExpr,
                       WhileLoopExpr, FDefStmt, Program, RetStmt, ConstExpr, POI, ForLoopExpr,
                       WhileLoopExpr, trueExpr, falseExpr, ControlFlowStyle as CFS, assert_never,
                       NoneExpr, saturate_expr1, addExpr, lessExpr, Signature,
-                      AssignStmt, signature, get_vars)
+                      AssignStmt, signature, get_vars, assignStmt, assignStmt_, callExpr)
 
 from .builder import Builder, contextualize_expr, build
 from .pprint import pprint
 
 def npois(e:Expr) -> int:
-    return len(contextualize_expr(e))
+    return len([p for p in contextualize_expr(e) if p.poi.isempty()])
 
 
 def expanded_to(ls:List[Any], l:int)->List[Optional[Any]]:
@@ -24,33 +24,34 @@ def expanded_to(ls:List[Any], l:int)->List[Optional[Any]]:
 def control_flows(expr_lib:List[Expr],
                   gate_lib:List[Tuple[FName,Signature]],
                   free_vars:List[VName]=[]) -> Iterable[Builder]:
-    gs = gate_lib
+    gs = gate_lib if gate_lib else [None]
     es = expr_lib
     ps = sum([npois(e) for e in expr_lib], 1)
     vs = sum([get_vars(e) for e in expr_lib], free_vars)
-    nargs = max(len(s.args) for _,s in gate_lib) + max(len(signature(e).args) for e in expr_lib)
+    nargs = max(chain([0],(len(s.args) for _,s in gate_lib))) + \
+            max(len(signature(e).args) for e in expr_lib)
     for e_sample in permutations(es):
         for p_sample in permutations(range(ps)):
             for g_sample in product(*[gs]*len(p_sample)):
-                args = list(product(*([vs]*nargs)))
+                args = list(product(*([vs]*max(2,nargs))))
                 for v_sample in product(*([args]*len(p_sample))):
                     b = build(POI(), free_vars)
                     try:
+                        e_sample_ext = expanded_to(e_sample,len(v_sample))
                         for p,g,e,v in zip(p_sample,
                                            g_sample,
-                                           expanded_to(e_sample,len(v_sample)),
+                                           e_sample_ext,
                                            v_sample):
                             ctx = b.at(p).ctx
-                            assert len(v) == 2
-                            assert all(vi in ctx.get_vscope() for vi in v), \
-                                f"{v} not in scope: {ctx.get_vscope()}"
-                            n = saturate_expr1(deepcopy(e) if e else VRefExpr(v[1]), VRefExpr(v[1]))
-                            r = addExpr(VRefExpr(ctx.statevar), n) if ctx.statevar else n
-                            b.update(p,
-                                     POI([AssignStmt(None, FCallExpr(VRefExpr(g[0]),
-                                                                     [VRefExpr(v[0])]))], r))
+                            assert len(v) >= 2, f"len({v}) < 2"
+                            if not all(vi in ctx.get_vscope() for vi in v):
+                                raise IndexError(f"{v} not in scope: {ctx.get_vscope()}")
+                            stmts = [AssignStmt_(callExpr(g[0], [v[0]]))] if g else []
+                            res = saturate_expr1(e if e else v[1], v[1])
+                            expr = addExpr(VRefExpr(ctx.statevar), res) if ctx.statevar else res
+                            b.update(p, POI(stmts, expr), ignore_nonempty=True)
                         yield b
-                    except AssertionError as e:
+                    except IndexError as err:
                         pass
 
 
