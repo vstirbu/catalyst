@@ -47,10 +47,10 @@ def evalPOI_(p:POI, use_qjit=True, args:Optional[List[Tuple[Expr,Any]]]=None, **
 @settings(max_examples=10)
 def test_eval_whiles(d, c):
     assume(c != 0)
-    l = d.draw(whileloops(lexpr=lambda x: just(eqExpr(x,ConstExpr(c-c)))))
+    l = d.draw(whileloops(lexpr=lambda x: just(eqExpr(x,c-c))))
     def render(style):
-        return POI.fE(saturates_expr1(ConstExpr(c-c),
-                      saturates_poi1(ConstExpr(c),l(style=style))))
+        return POI.fE(saturates_expr1(c-c,
+                      saturates_poi1(c, l(style=style))))
 
     r1 = evalPOI_(render(CFS.Python), use_qjit=False)
     r2 = evalPOI_(render(CFS.Catalyst), use_qjit=True)
@@ -63,8 +63,8 @@ def test_eval_whiles(d, c):
 @settings(max_examples=10)
 def test_eval_fors_conds(x, y, c):
     def render(style):
-        inner = saturates_poi1(ConstExpr(c), saturates_expr1(ConstExpr(c+c), y(style=style)))
-        outer = saturates_expr1(ConstExpr(c+c+c), saturates_poi1(inner, x(style=style)))
+        inner = saturates_poi1(c, saturates_expr1(c, y(style=style)))
+        outer = saturates_expr1(c, saturates_poi1(inner, x(style=style)))
         return POI.fE(outer)
 
     r1 = evalPOI_(render(CFS.Python), use_qjit=False)
@@ -106,7 +106,7 @@ def test_eq_expr(x):
 @given(x=complexes(allow_nan=False, allow_infinity=False))
 @settings(max_examples=10)
 def test_eval_const(x, use_qjit):
-    assert jnp.array([x]) == evalPOI_(POI.fE(ConstExpr(jnp.array([x]))), use_qjit)
+    assert jnp.array([x]) == evalPOI_(POI.fE(jnp.array([x])), use_qjit)
 
 
 @mark.parametrize('use_qjit', [True, False])
@@ -114,7 +114,7 @@ def test_eval_const(x, use_qjit):
 @settings(max_examples=10)
 def test_eval_cond(c, x, use_qjit):
     jx = jnp.array([x])
-    x2 = saturates_expr1(ConstExpr(jx), saturates_poi1(ConstExpr(jx), c()))
+    x2 = saturates_expr1(jx, saturates_poi1(jx, c()))
     assert jx == evalPOI_(POI.fE(x2), use_qjit)
 
 
@@ -124,7 +124,7 @@ def test_eval_cond(c, x, use_qjit):
 @settings(max_examples=10)
 def test_eval_for(l, x, use_qjit):
     jx = jnp.array([x])
-    r = saturates_expr1(ConstExpr(jx), saturates_poi1(VRefExpr(VName('s')), l()))
+    r = saturates_expr1(jx, saturates_poi1(VRefExpr(VName('s')), l()))
     assert jx == evalPOI_(POI.fE(r), use_qjit)
 
 
@@ -135,8 +135,8 @@ def test_eval_for(l, x, use_qjit):
 @settings(max_examples=10)
 def test_eval_while(l, x, use_qjit):
     jx = jnp.array([x])
-    r = saturates_poi1(addExpr(VRefExpr(VName('i')), ConstExpr(1)),
-                       saturates_expr1(ConstExpr(jx), l()))
+    r = saturates_poi1(addExpr(VRefExpr(VName('i')), 1),
+                       saturates_expr1(jx, l()))
     assert jx == evalPOI_(POI.fE(r), use_qjit=use_qjit)
 
 
@@ -185,8 +185,8 @@ def test_build_destructive_update():
     l = WhileLoopExpr(VName("i"), trueExpr, POI(), ControlFlowStyle.Catalyst)
     c = CondExpr(trueExpr, POI(), POI(), ControlFlowStyle.Catalyst)
     b = build(POI())
-    b.update(0, POI.fE(saturate_expr1(l, ConstExpr(0))))
-    b.update(1, POI.fE(saturate_expr1(c, ConstExpr(1))))
+    b.update(0, POI.fE(saturate_expr1(l, 0)))
+    b.update(1, POI.fE(saturate_expr1(c, 1)))
     assert len(b.pois)==4
     s1 = pstr_builder(b)
     b.update(0, b.pois[0].poi)
@@ -199,7 +199,7 @@ def test_build_assign_layout():
     va = AssignStmt(VName('a'),ConstExpr(33))
     vb = AssignStmt(VName('b'),ConstExpr(42))
     l = WhileLoopExpr(VName("i"), trueExpr, POI([vb],VRefExpr(VName('b'))), ControlFlowStyle.Catalyst)
-    b = build(POI([va],saturate_expr1(l, ConstExpr(0))))
+    b = build(POI([va],saturate_expr1(l, 0)))
     s = pstr_builder(b)
     print(b.pois[0].ctx)
 
@@ -210,7 +210,7 @@ def test_build_assign_layout():
 def test_run(use_qjit, qnode_device, scalar):
     val = jnp.array(scalar)
     source_file = mktemp("source.py")
-    code, res = runPOI(POI.fE(ConstExpr(val)), use_qjit=use_qjit, qnode_device=qnode_device,
+    code, res = runPOI(POI.fE(val), use_qjit=use_qjit, qnode_device=qnode_device,
                        source_file=source_file)
     os.remove(source_file)
     assert res is not None
@@ -268,7 +268,7 @@ def test_run(use_qjit, qnode_device, scalar):
 
 sample_spec:List[Expr] = [
     # WhileLoopExpr(VName("i"), trueExpr, POI(), CFS.Catalyst) : 1,
-    WhileLoopExpr(VName("j1"), lessExpr(VRefExpr(VName("j1")),ConstExpr(2)), POI(), CFS.Default),
+    WhileLoopExpr(VName("j1"), lessExpr(VName("j1"),2), POI(), CFS.Default),
     ForLoopExpr(VName("k1"), ConstExpr(0), ConstExpr(2), POI(), CFS.Default, VName("k2")),
     # CondExpr(trueExpr, POI(), POI(), CFS.Catalyst) : 1,
 ]

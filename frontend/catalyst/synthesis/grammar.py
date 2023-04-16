@@ -27,8 +27,8 @@ class POI:
         return hash((tuple(self.stmts), self.expr))
 
     @classmethod
-    def fromExpr(cls, e:"Expr") -> "POI":
-        return POI([],e)
+    def fromExpr(cls, e:"ExprLike") -> "POI":
+        return POI([],bless_expr(e))
 
     @classmethod
     def fE(cls, *args, **kwargs) -> "POI":
@@ -128,16 +128,16 @@ trueExpr = ConstExpr(True)
 falseExpr = ConstExpr(False)
 
 def lessExpr(a,b) -> FCallExpr:
-    return FCallExpr(VRefExpr(FName('<')),[a,b])
+    return FCallExpr(VRefExpr(FName('<')),[bless_expr(e) for e in [a,b]])
 
 def addExpr(a,b) -> FCallExpr:
-    return FCallExpr(VRefExpr(FName('+')),[a,b])
+    return FCallExpr(VRefExpr(FName('+')),[bless_expr(e) for e in [a,b]])
 
 def neqExpr(a,b) -> FCallExpr:
-    return FCallExpr(VRefExpr(FName('!=')),[a,b])
+    return FCallExpr(VRefExpr(FName('!=')),[bless_expr(e) for e in [a,b]])
 
 def eqExpr(a,b) -> FCallExpr:
-    return FCallExpr(VRefExpr(FName('==')),[a,b])
+    return FCallExpr(VRefExpr(FName('==')),[bless_expr(e) for e in [a,b]])
 
 Stmt = Union["AssignStmt", "FDefStmt", "RetStmt"]
 

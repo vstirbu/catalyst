@@ -79,8 +79,19 @@ def _hi(st:PStrState, opt:Optional[PStrOptions], poi:POI) -> List[str]:
 
 TABSTOP:int = 4
 
-def _parens(expr:Expr, expr_str:str) -> str:
-    return expr_str if isinstance(expr, (VRefExpr, ConstExpr)) else f"({expr_str})"
+def _style(s, opt):
+    s = (opt.default_cfstyle if opt else DEFAULT_CFSTYLE) if s==ControlFlowStyle.Default else s
+    assert s != ControlFlowStyle.Default, f"Concrete CF style is expected at this point"
+    return s
+
+def _isinfix(e:FCallExpr) -> bool:
+    return isinstance(e.expr, VRefExpr) and all(c in "!>=<=+-/*" for c in e.expr.vname.val) and len(e.args)==2
+
+def _parens(e:Expr, expr_str:str, opt) -> str:
+    if isinstance(e, (VRefExpr, ConstExpr)) or (isinstance(e, FCallExpr) and not _isinfix(e)):
+        return expr_str
+    else:
+        return f"({expr_str})"
 
 def pstr_expr(expr:ExprLike,
               state:Optional[PStrState]=None,
@@ -88,15 +99,11 @@ def pstr_expr(expr:ExprLike,
               arg_expr:Optional[List[Expr]]=None) -> Tuple[List[str],str]:
     e = bless_expr(expr)
     st = state if state else PStrState(0,Suffix(0))
-    def _style(s):
-        s = (opt.default_cfstyle if opt else DEFAULT_CFSTYLE) if s==ControlFlowStyle.Default else s
-        assert s != ControlFlowStyle.Default, f"Concrete CF style is expected at this point"
-        return s
     if isinstance(e, FCallExpr):
         return pstr_expr(e.expr, state, opt, arg_expr=e.args)
     elif isinstance(e, CondExpr):
         assert arg_expr is not None
-        if _style(e.style) == ControlFlowStyle.Python:
+        if _style(e.style, opt) == ControlFlowStyle.Python:
             acc, scond = pstr_expr(e.cond, st, opt)
             st1, svar = st.tabulate().issue("_cond")
             true_part = (
@@ -114,7 +121,7 @@ def pstr_expr(expr:ExprLike,
                      e.falseBranch.expr else [])) +
                 _hi(st1, opt, e.falseBranch)) if e.falseBranch else []
             return (acc + true_part + false_part, svar)
-        elif _style(e.style) == ControlFlowStyle.Catalyst:
+        elif _style(e.style, opt) == ControlFlowStyle.Catalyst:
             acc, lcond = pstr_expr(e.cond, st, opt)
             st1, nmcond = st.tabulate().issue("cond")
             true_part = (
@@ -134,18 +141,20 @@ def pstr_expr(expr:ExprLike,
             assert_never(e.style)
     elif isinstance(e, ForLoopExpr):
         assert len(arg_expr)==1
-        if _style(e.style) == ControlFlowStyle.Python:
-            st1, svar = st.tabulate().issue("_forloop")
-            accArg = pstr_stmt(AssignStmt(VName(svar), arg_expr[0]), st, opt)
+        if _style(e.style, opt) == ControlFlowStyle.Python:
+            st1 = st.tabulate()
+            accArg = pstr_stmt(AssignStmt(e.statevar, arg_expr[0]), st, opt) if e.statevar else []
             accL, lexprL = pstr_expr(e.lbound, st, opt)
             accU, lexprU = pstr_expr(e.ubound, st, opt)
             return (
                 accArg + accL + accU +
                 _in(st, [f"for {e.loopvar.val} in range({lexprL},{lexprU}):"]) +
                 _ne(st, sum([pstr_stmt(s, st1, opt) for s in e.body.stmts], []) +
-                        (pstr_stmt(AssignStmt(VName(svar),e.body.expr), st1, opt) if e.body.expr else [])) +
-                _hi(st1, opt, e.body), svar)
-        elif _style(e.style) == ControlFlowStyle.Catalyst:
+                        (pstr_stmt(AssignStmt(e.statevar,e.body.expr), st1, opt)
+                         if e.body.expr and e.statevar else [])) +
+                _hi(st1, opt, e.body), (e.statevar.val if e.statevar else "None"))
+
+        elif _style(e.style, opt) == ControlFlowStyle.Catalyst:
             accArg, sarg = pstr_expr(arg_expr[0], st, opt)
             accL, lexprL = pstr_expr(e.lbound, st, opt)
             accU, lexprU = pstr_expr(e.ubound, st, opt)
@@ -162,7 +171,7 @@ def pstr_expr(expr:ExprLike,
             assert_never(e.style)
     elif isinstance(e, WhileLoopExpr):
         assert len(arg_expr)==1
-        if _style(e.style) == ControlFlowStyle.Python:
+        if _style(e.style, opt) == ControlFlowStyle.Python:
             accArg = pstr_stmt(AssignStmt(e.statevar, arg_expr[0]), st, opt)
             accCond, lexpr = pstr_expr(e.cond, st, opt)
             st1, svar = st.tabulate().issue("_whileloop")
@@ -174,7 +183,7 @@ def pstr_expr(expr:ExprLike,
                         (pstr_stmt(AssignStmt(e.statevar, e.body.expr), st1, opt) if e.body.expr else [])) +
                 _hi(st1, opt, e.body),
                 e.statevar.val)
-        elif _style(e.style) == ControlFlowStyle.Catalyst:
+        elif _style(e.style, opt) == ControlFlowStyle.Catalyst:
             accArg, sarg = pstr_expr(arg_expr[0], st, opt)
             accCond, lexpr = pstr_expr(e.cond, st, opt)
             st1, nwhileloop = st.tabulate().issue("whileloop")
@@ -199,8 +208,9 @@ def pstr_expr(expr:ExprLike,
                 acc_body.extend(lss)
                 args.append(le)
             return acc_body, (
-                f"{_parens(arg_expr[0],args[0])} {e.vname.val} {_parens(arg_expr[1],args[1])}"
-                if (all(c in "!>=<=+-/*" for c in e.vname.val) and len(arg_expr)==2) else
+                f"{_parens(arg_expr[0], args[0], opt)} {e.vname.val} {_parens(arg_expr[1], args[1], opt)}"
+                if len(arg_expr)==2 and _isinfix(FCallExpr(e, arg_expr)) else
+                # if (all(c in "!>=<=+-/*" for c in e.vname.val) and len(arg_expr)==2) else
                 f"{e.vname.val}({', '.join(args)})" )
     elif isinstance(e, ConstExpr):
         if isinstance(e.val, bool): # Should be above 'int'
