@@ -20,7 +20,8 @@ from pennylane.numpy import tensor as PnpArray
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt,
                       CondExpr, WhileLoopExpr, FDefStmt, Program, RetStmt,
                       ConstExpr, NoneExpr, POI, ForLoopExpr, ControlFlowStyle,
-                      assert_never, isinstance_expr, isinstance_stmt)
+                      assert_never, isinstance_expr, isinstance_stmt, ExprLike, bless_expr,
+                      isinstance_exprlike)
 
 from .builder import (Builder)
 
@@ -81,11 +82,11 @@ TABSTOP:int = 4
 def _parens(expr:Expr, expr_str:str) -> str:
     return expr_str if isinstance(expr, (VRefExpr, ConstExpr)) else f"({expr_str})"
 
-def pstr_expr(expr:Expr,
+def pstr_expr(expr:ExprLike,
               state:Optional[PStrState]=None,
               opt:Optional[PStrOptions]=None,
               arg_expr:Optional[List[Expr]]=None) -> Tuple[List[str],str]:
-    e = expr
+    e = bless_expr(expr)
     st = state if state else PStrState(0,Suffix(0))
     def _style(s):
         s = (opt.default_cfstyle if opt else DEFAULT_CFSTYLE) if s==ControlFlowStyle.Default else s
@@ -271,7 +272,7 @@ def pstr_prog(p:Program, state=None, opt=None) -> List[str]:
     return pstr_stmt(p, state, opt)
 
 
-def pstr(p:Union[Builder, Program, Stmt, Expr], default_cfstyle=DEFAULT_CFSTYLE) -> str:
+def pstr(p:Union[Builder, Program, Stmt, ExprLike], default_cfstyle=DEFAULT_CFSTYLE) -> str:
     """ Prints the program on the console
     FIXME: Find out how not to repeat Stmt and Expr definitions
     """
@@ -284,12 +285,13 @@ def pstr(p:Union[Builder, Program, Stmt, Expr], default_cfstyle=DEFAULT_CFSTYLE)
             return '\n'.join(pstr_prog(p, None, opt))
         elif isinstance_stmt(p):
             return '\n'.join(pstr_stmt(p, None, opt))
-        elif isinstance_expr(p):
+        elif isinstance_exprlike(p):
             stmts,expr = pstr_expr(p, None, opt, arg_expr=[VRefExpr(VName("<?>"))])
             return '\n'.join(stmts + [f"## {expr} ##"])
         else:
             assert_never(p)
 
 
-def pprint(p:Union[Builder, Program, Stmt, Expr], default_cfstyle=CFS.Catalyst) -> None:
+def pprint(p:Union[Builder, Program, Stmt, ExprLike], default_cfstyle=CFS.Catalyst) -> None:
     print(pstr(p, default_cfstyle=default_cfstyle))
+

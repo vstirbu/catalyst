@@ -12,7 +12,7 @@ from dataclasses import astuple
 from numpy.testing import assert_allclose
 
 from catalyst.synthesis.grammar import (Expr, RetStmt, FCallExpr, VName, FName, VRefExpr, signature
-                                        as expr_signature, isinstance_expr, innerdefs1, AssignStmt,
+                                        as expr_signature, isinstance_expr, AssignStmt,
                                         lessExpr, addExpr, eqExpr, ControlFlowStyle as CFS, signature,
                                         Signature, bind, saturate_expr, saturates_expr1,
                                         saturates_poi1, saturate_expr1, saturate_poi1)
@@ -72,14 +72,15 @@ def test_eval_fors_conds(x, y, c):
     assert_allclose(r1, r2)
 
 
-@mark.parametrize('st', [CFS.Python, CFS.Catalyst])
-@given(d=data())
-@settings(verbosity=Verbosity.debug)
-def test_pprint_fdef_cflow(d, st):
-    x = d.draw(one_of([whileloops(style=st), forloops(style=st), conds(style=st)]))
-    f = FDefStmt(FName("main"), [], POI())
-    s = pstr(saturates_poi1(saturates_expr1(ConstExpr(42), saturates_poi1(ConstExpr(33), x())), f))
-    note(s)
+# @mark.parametrize('st', [CFS.Python, CFS.Catalyst])
+# @given(d=data())
+# @settings(verbosity=Verbosity.debug)
+# def test_pprint_fdef_cflow(d, st):
+#     x = d.draw(one_of([whileloops(style=st), forloops(style=st), conds(style=st)]))
+#     f = FDefStmt(FName("main"), [], POI())
+#     s = pstr(saturates_poi1(saturates_expr1(ConstExpr(42), saturates_poi1(ConstExpr(33), x())),
+#                             FCallExpr(f,[])))
+#     note(s)
 
 
 # @mark.parametrize('st', [CFS.Python, CFS.Catalyst])

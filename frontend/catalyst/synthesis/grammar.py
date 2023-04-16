@@ -66,10 +66,16 @@ class VRefExpr:
     """ Expression - reference to a variable """
     vname: Union[FName, VName]
 
+
+ConstExprVal = Union[bool, int, float, complex, JaxArray]
+
+def isinstance_cval(e:Any)->bool:
+    return isinstance(e, (bool, int, float, complex, JaxArray))
+
 @dataclass(frozen=True)
 class ConstExpr:
     """ Expression - constant """
-    val: Union[bool, int, float, complex, JaxArray]
+    val: ConstExprVal
 
 @dataclass(frozen=True)
 class NoneExpr:
@@ -172,6 +178,22 @@ def assert_never(x: Any) -> NoReturn:
     raise RuntimeError("Unhandled type: {}".format(type(x).__name__))
 
 
+ExprLike = Union[Expr, ConstExprVal, VName, FName]
+
+def isinstance_exprlike(e:Any) -> bool:
+    return isinstance_expr(e) or isinstance_cval(e) or isinstance(e, [VName, FName])
+
+def bless_expr(e:ExprLike) -> Expr:
+    if isinstance_expr(e):
+        return e
+    elif isinstance_cval(e):
+        return ConstExpr(e)
+    elif isinstance(e, (VName,FName)):
+        return VRefExpr(e)
+    else:
+        assert_never(e)
+
+
 @dataclass
 class Signature:
     args:List[str]
@@ -194,18 +216,8 @@ def signature(x: Union[FDefStmt, Expr]) -> Optional[Signature]:
         return None
 
 
-def innerdefs1(e: Expr) -> Set[VRefExpr]:
-    """ Return immediate inner variables """
-    if isinstance(e, ForLoopExpr):
-        return set([VRefExpr(e.loopvar)])
-    elif isinstance(e, WhileLoopExpr):
-        return set([VRefExpr(e.loopvar)])
-    else:
-        return set()
-
-
 def bind(a:POI, b:POI, expr:Expr) -> POI:
-    return POI(a.stmts + b.stmts, expr)
+    return POI(a.stmts + b.stmts, bless_expr(expr))
 
 
 def bindUnary(value:POI, function:POI) -> Optional[POI]:
@@ -275,16 +287,17 @@ def get_pois(e:Union[Stmt,Expr]) -> List[POI]:
     return reduce_stmt_expr(e, lambda e,acc: acc+_pois(e), [])
 
 
-def saturate_expr(e:Expr, args:Iterable[Expr]) -> Expr:
+def saturate_expr(e:ExprLike, args:Iterable[ExprLike]) -> Expr:
+    e2 = bless_expr(deepcopy(e))
     s = signature(e)
-    return FCallExpr(e, [next(args) for _ in s.args]) if s else e
+    return FCallExpr(e, [bless_expr(next(args)) for _ in s.args]) if s else e
 
-def saturate_poi(e:Expr, args:Iterable[Union[POI,Expr]]) -> Expr:
-    e2 = deepcopy(e)
+def saturate_poi(e:ExprLike, args:Iterable[Union[POI,ExprLike]]) -> Expr:
+    e2 = bless_expr(deepcopy(e))
     for poi in get_pois(e2):
         if poi.expr is None:
             arg = next(args)
-            arg = arg if isinstance(arg, POI) else POI.fromExpr(arg)
+            arg = arg if isinstance(arg, POI) else POI.fromExpr(bless_expr(arg))
             poi.stmts = deepcopy(arg.stmts)
             poi.expr = deepcopy(arg.expr)
     return e2
@@ -294,7 +307,6 @@ def saturate_expr1(e, arg):
 
 def saturate_poi1(e, arg):
     return saturate_poi(e, cycle([arg]))
-
 
 def saturates_expr(args, e):
     return saturate_expr(e, args)
