@@ -46,15 +46,15 @@ def control_flows(expr_lib:List[Expr],
                             tail = addExpr(VRefExpr(v[1]),ConstExpr(1))
                             b.update(p,
                                      POI([AssignStmt(None, FCallExpr(VRefExpr(g[0]),[VRefExpr(v[0])]))],
-                                         saturate_expr1(deepcopy(e), tail) if e else tail))
+                                         addExpr(saturate_expr1(deepcopy(e), tail), ConstExpr(1)) if e else tail))
                         yield b
                     except AssertionError as e:
                         pass
 
 
 sample_spec:List[Expr] = [
-    WhileLoopExpr(VName("j"), lessExpr(VRefExpr(VName("j")),ConstExpr(1)), POI(), CFS.Catalyst),
-    ForLoopExpr(VName("k1"), ConstExpr(0), ConstExpr(1), POI(), CFS.Catalyst, VName("k2")),
+    WhileLoopExpr(VName("j"), lessExpr(VRefExpr(VName("j")),ConstExpr(1)), POI(), CFS.Default),
+    ForLoopExpr(VName("k1"), ConstExpr(0), ConstExpr(1), POI(), CFS.Default, VName("k2")),
 ]
 
 gate_lib = [

@@ -20,8 +20,8 @@ except ImportError:
     CATALYST_LOADED = False
 
 from .grammar import (Expr, Stmt, RetStmt, FDefStmt, FCallExpr, VName, FName, VRefExpr, signature as
-                      expr_signature, isinstance_expr, POI)
-from .pprint import pstr_stmt, pstr_expr, pprint
+                      expr_signature, isinstance_expr, POI, ControlFlowStyle)
+from .pprint import pstr_stmt, pstr_expr, pprint, PStrOptions
 from .builder import build
 
 
@@ -37,14 +37,15 @@ def wrapInMain(p:POI, name:Optional[str]=None, args:Optional[List[Expr]]=None, u
 
 
 def compilePOI(p:Union[Stmt,POI],
-               use_qjit:bool=True,
                name:Optional[str]=None,
                args:Optional[List[Expr]]=None,
+               default_cfstyle=ControlFlowStyle.Catalyst,
                **kwargs) -> Tuple[PythonObj, PythonCode]:
     """ Insert the point of insertion into the top-level function and use the Python built-in
     `compile` function on it """
     p = wrapInMain(p, name, args, **kwargs) if isinstance(p, POI) else p
-    code = '\n'.join(pstr_stmt(p))
+    opts = PStrOptions(default_cfstyle)
+    code = '\n'.join(pstr_stmt(p, None, opts))
     o = compile(code, "<compilePOI>", "single")
     return (o, code)
 

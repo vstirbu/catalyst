@@ -77,9 +77,10 @@ class NoneExpr:
     pass
 
 class ControlFlowStyle(Enum):
-    Python = 0
-    Catalyst = 1
-    JAX = 2
+    Default = 0
+    Python = 1
+    Catalyst = 2
+    # JAX = 3
 
 @dataclass(frozen=True)
 class CondExpr:

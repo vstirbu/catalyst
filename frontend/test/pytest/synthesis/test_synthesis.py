@@ -17,18 +17,23 @@ from catalyst.synthesis.grammar import (Expr, RetStmt, FCallExpr, VName, FName, 
                                         Signature, bind, saturate_expr, saturates_expr1,
                                         saturates_poi1, saturate_expr1, saturate_poi1)
 
-from catalyst.synthesis.pprint import pstr_builder, pstr_stmt, pstr_expr, pprint, pstr
+from catalyst.synthesis.pprint import (pstr_builder, pstr_stmt, pstr_expr, pprint, pstr,
+                                       DEFAULT_CFSTYLE)
 from catalyst.synthesis.builder import build
 from catalyst.synthesis.exec import compilePOI, evalPOI, runPOI, wrapInMain
 from catalyst.synthesis.generator import control_flows
 from catalyst.synthesis.hypothesis import *
 
 
-def compilePOI_(*args, **kwargs):
+MAXINT64 = (1<<63) - 1
+
+safe_integers = partial(integers, min_value=-(MAXINT64-1), max_value=MAXINT64)
+
+def compilePOI_(*args, default_cfstyle=DEFAULT_CFSTYLE, **kwargs):
     s = wrapInMain(*args, **kwargs)
     print("Generated Python statement is:")
-    print('\n'.join(pstr_stmt(s)))
-    return compilePOI(s)
+    print('\n'.join(pstr(s, default_cfstyle=default_cfstyle)))
+    return compilePOI(s, default_cfstyle=default_cfstyle)
 
 
 def evalPOI_(p:POI, use_qjit=True, args:Optional[List[Tuple[Expr,Any]]]=None, **kwargs):
@@ -38,7 +43,7 @@ def evalPOI_(p:POI, use_qjit=True, args:Optional[List[Tuple[Expr,Any]]]=None, **
     return evalPOI(o, args=arg_all)
 
 
-@given(d=data(), c=one_of([floats(), integers()])) # complexes() doesn't work
+@given(d=data(), c=one_of([floats(), safe_integers()])) # complexes() doesn't work
 @settings(max_examples=10)
 def test_eval_whiles(d, c):
     assume(c != 0)
@@ -54,7 +59,7 @@ def test_eval_whiles(d, c):
 
 @given(x = one_of([forloops(), conds()]),
        y = one_of([forloops(), conds()]),
-       c = one_of([floats(), integers()])) # complexes() doesn't work
+       c = one_of([floats(), safe_integers()])) # complexes() doesn't work
 @settings(max_examples=10)
 def test_eval_fors_conds(x, y, c):
     def render(style):
@@ -262,8 +267,8 @@ def test_run(use_qjit, qnode_device, scalar):
 
 sample_spec:List[Expr] = [
     # WhileLoopExpr(VName("i"), trueExpr, POI(), CFS.Catalyst) : 1,
-    WhileLoopExpr(VName("j1"), lessExpr(VRefExpr(VName("j1")),ConstExpr(2)), POI(), CFS.Python),
-    ForLoopExpr(VName("k1"), ConstExpr(0), ConstExpr(2), POI(), CFS.Python, VName("k2")),
+    WhileLoopExpr(VName("j1"), lessExpr(VRefExpr(VName("j1")),ConstExpr(2)), POI(), CFS.Default),
+    ForLoopExpr(VName("k1"), ConstExpr(0), ConstExpr(2), POI(), CFS.Default, VName("k2")),
     # CondExpr(trueExpr, POI(), POI(), CFS.Catalyst) : 1,
 ]
 
@@ -284,13 +289,21 @@ def run():
         pprint(b)
         print("1. Press Enter to compile")
         input()
-        o,code = compilePOI(
+        o1,code1 = compilePOI(
             bindAssign(b.pois[0].poi,
                        lambda e: POI([AssignStmt(None,e)],FCallExpr(VRefExpr(FName("qml.state")),[]))),
-            use_qjit=True, name="main", qnode_wires=3, args=[arg])
+            use_qjit=True, name="main", qnode_wires=3, qnode_device="lightning.qubit", args=[arg],
+            default_cfstyle=ControlFlowStyle.Catalyst)
+        o2,code2 = compilePOI(
+            bindAssign(b.pois[0].poi,
+                       lambda e: POI([AssignStmt(None,e)],FCallExpr(VRefExpr(FName("qml.state")),[]))),
+            use_qjit=False, name="main", qnode_wires=3, args=[arg],
+            default_cfstyle=ControlFlowStyle.Python)
         print("2. Compiled code:")
-        print(code)
-        print("2. Press Enter to eval")
+        print(code1)
+        print("(^^^ Catalyst, Python vvv)")
+        print(code2)
+        # print("2. Press Enter to eval")
         input()
         # r = evalPOI(o, name="main", args=[(arg,0)])
         # print("3. Evaluation result:")

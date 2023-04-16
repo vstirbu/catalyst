@@ -47,7 +47,7 @@ def fdefs(draw,
 @composite
 def conds(draw,
           cond=sampled_from([trueExpr, falseExpr]),
-          style=ControlFlowStyle.Catalyst):
+          style=ControlFlowStyle.Default):
     cond=draw(cond)
     return partial(CondExpr,
                 cond=cond,
@@ -62,7 +62,7 @@ def forloops(draw,
              svars=vnames(sampled_from('lmn')),
              lbounds=integers(0,10),
              ubounds=integers(0,10),
-             style=ControlFlowStyle.Catalyst):
+             style=ControlFlowStyle.Default):
     loopvar=draw(lvars)
     statevar=draw(svars)
     lbound=ConstExpr(draw(lbounds))
@@ -79,7 +79,7 @@ def forloops(draw,
 def whileloops(draw,
                lvars=vnames(sampled_from('ijk')),
                lexpr=lambda x: just(eqExpr(x,ConstExpr(0))),
-               style=ControlFlowStyle.Catalyst):
+               style=ControlFlowStyle.Default):
     loopvar=draw(lvars)
     cond=draw(lexpr(VRefExpr(loopvar)))
     return partial(WhileLoopExpr,
