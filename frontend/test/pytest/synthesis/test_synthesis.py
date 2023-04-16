@@ -1,9 +1,10 @@
 import os
 import sys
 from typing import Any, Dict, Tuple, Union, Callable, Set, List
-from hypothesis import given, note, settings, Verbosity
+from hypothesis import given, note, settings, Verbosity, assume
 from inspect import signature as python_signature, _empty as inspect_empty
 from tempfile import mktemp
+from itertools import cycle
 
 import jax.numpy as jnp
 from pytest import mark
@@ -12,34 +13,23 @@ from numpy.testing import assert_allclose
 
 from catalyst.synthesis.grammar import (Expr, RetStmt, FCallExpr, VName, FName, VRefExpr, signature
                                         as expr_signature, isinstance_expr, innerdefs1, AssignStmt,
-                                        lessExpr, addExpr, ControlFlowStyle as CFS, signature,
-                                        Signature, bind, saturate_expr, saturate_pois2)
+                                        lessExpr, addExpr, eqExpr, ControlFlowStyle as CFS, signature,
+                                        Signature, bind, saturate_expr, saturates_expr1,
+                                        saturates_poi1, saturate_expr1, saturate_poi1)
 
 from catalyst.synthesis.pprint import pstr_builder, pstr_stmt, pstr_expr, pprint, pstr
 from catalyst.synthesis.builder import build
-from catalyst.synthesis.exec import compilePOI, evalPOI, runPOI
+from catalyst.synthesis.exec import compilePOI, evalPOI, runPOI, wrapInMain
 from catalyst.synthesis.generator import control_flows
 from catalyst.synthesis.hypothesis import *
 
 
-VERBOSE:bool = True
-
-ExprPart = Callable[[POI],Union[Expr,"ExprPart"]]
-
-# def force_settings(x, **kwargs):
-#     if hasattr(x, "_hypothesis_internal_settings_applied"):
-#         delattr(x, "_hypothesis_internal_settings_applied")
-#     settings(**kwargs)(x)()
-
-# def force_verbose(x):
-#     force_settings(x, verbosity=Verbosity.debug)
-
-
 def compilePOI_(*args, **kwargs):
-    o,code = compilePOI(*args, **kwargs)
-    note("Generated Python code is:")
-    note(code)
-    return o,code
+    s = wrapInMain(*args, **kwargs)
+    print("Generated Python statement is:")
+    print('\n'.join(pstr_stmt(s)))
+    return compilePOI(s)
+
 
 def evalPOI_(p:POI, use_qjit=True, args:Optional[List[Tuple[Expr,Any]]]=None, **kwargs):
     arg_exprs = list(zip(*args))[0] if args is not None and len(args)>0 else []
@@ -48,64 +38,61 @@ def evalPOI_(p:POI, use_qjit=True, args:Optional[List[Tuple[Expr,Any]]]=None, **
     return evalPOI(o, args=arg_all)
 
 
-def saturate_poi(e:Union[Expr, ExprPart], val:Union[POI, Expr]) -> Expr:
-    val_ = val if isinstance(val, POI) else POI.fE(val)
-    return saturate_poi(e(val_), val) if isinstance(e,Callable) else e
+@given(d=data(), c=one_of([floats(), integers()])) # complexes() doesn't work
+@settings(max_examples=10)
+def test_eval_whiles(d, c):
+    assume(c != 0)
+    l = d.draw(whileloops(lexpr=lambda x: just(eqExpr(x,ConstExpr(c-c)))))
+    def render(style):
+        return POI.fE(saturates_expr1(ConstExpr(c-c),
+                      saturates_poi1(ConstExpr(c),l(style=style))))
+
+    r1 = evalPOI_(render(CFS.Python), use_qjit=False)
+    r2 = evalPOI_(render(CFS.Catalyst), use_qjit=True)
+    assert_allclose(r1, r2)
 
 
-def mkCallExpr1(x:Expr, arg:Expr) -> Expr:
-    """ Produces `FCallExpr(x, [arg]*N)` """
-    s = expr_signature(x)
-    assert s is not None, f"{x} is not a callable Expr"
-    fname, anames = astuple(s)
-    return FCallExpr(x, [arg for _ in anames])
+@given(x = one_of([forloops(), conds()]),
+       y = one_of([forloops(), conds()]),
+       c = one_of([floats(), integers()])) # complexes() doesn't work
+@settings(max_examples=10)
+def test_eval_fors_conds(x, y, c):
+    def render(style):
+        inner = saturates_poi1(ConstExpr(c), saturates_expr1(ConstExpr(c+c), y(style=style)))
+        outer = saturates_expr1(ConstExpr(c+c+c), saturates_poi1(inner, x(style=style)))
+        return POI.fE(outer)
 
-
-@mark.parametrize('st', [CFS.Python, CFS.Catalyst])
-@given(d=data())
-@settings(verbosity=Verbosity.debug)
-def test_pprint_cflow(d, st):
-    x = d.draw(one_of([whileloops(style=st), forloops(style=st), conds(style=st)]))
-    s = pstr(saturate_poi(x, ConstExpr(33)))
-    note(s)
-
-
-@mark.parametrize('st', [CFS.Python, CFS.Catalyst])
-@given(d=data())
-@settings(verbosity=Verbosity.debug)
-def test_pprint_cflow_cflow(d, st):
-    x = d.draw(one_of([whileloops(style=st), forloops(style=st), conds(style=st)]))
-    y = d.draw(one_of([whileloops(style=st), forloops(style=st), conds(style=st)]))
-    s = pstr(saturate_poi(x, saturate_expr( saturate_poi(y, ConstExpr(33) ), ConstExpr(0))))
-    note(s)
+    r1 = evalPOI_(render(CFS.Python), use_qjit=False)
+    r2 = evalPOI_(render(CFS.Catalyst), use_qjit=True)
+    assert_allclose(r1, r2)
 
 
 @mark.parametrize('st', [CFS.Python, CFS.Catalyst])
 @given(d=data())
 @settings(verbosity=Verbosity.debug)
 def test_pprint_fdef_cflow(d, st):
-    x=d.draw(one_of([whileloops(style=st), forloops(style=st), conds(style=st)]))
-    s=pstr(FDefStmt(FName("main"), [],
-                    POI.fE( saturate_expr( saturate_poi(x, ConstExpr(33)), ConstExpr(42)))))
-    note(s)
-
-
-@mark.parametrize('st', [CFS.Python, CFS.Catalyst])
-@given(d=data())
-@settings(verbosity=Verbosity.debug)
-def test_pprint_ret_ctflow(d, st):
     x = d.draw(one_of([whileloops(style=st), forloops(style=st), conds(style=st)]))
-    s = pstr(RetStmt(saturate_expr( saturate_poi(x, ConstExpr(33)), ConstExpr(42) )))
+    f = FDefStmt(FName("main"), [], POI())
+    s = pstr(saturates_poi1(saturates_expr1(ConstExpr(42), saturates_poi1(ConstExpr(33), x())), f))
     note(s)
+
+
+# @mark.parametrize('st', [CFS.Python, CFS.Catalyst])
+# @given(d=data())
+# @settings(verbosity=Verbosity.debug)
+# def test_pprint_ret_ctflow(d, st):
+#     x = d.draw(one_of([whileloops(style=st), forloops(style=st), conds(style=st)]))
+#     s = pstr(RetStmt( saturates_expr1(ConstExpr(42), saturates_poi1(ConstExpr(33), x))))
+#     note(s)
 
 
 @given(x=one_of([conds(),whileloops(),forloops()]))
 def test_eq_expr(x):
-    xa=saturate_poi(x, POI())
-    xb=saturate_poi(x, POI())
+    xa = saturates_poi1(POI(), x())
+    xb = saturates_poi1(POI(), x())
     assert xa is not xb
     assert xa == xb
-    xc=saturate_poi(x, saturate_poi(x,POI()))
+    xc = saturates_poi1(saturates_poi1(POI(), x()), x())
     assert xa != xc
 
 
@@ -121,7 +108,7 @@ def test_eval_const(x, use_qjit):
 @settings(max_examples=10)
 def test_eval_cond(c, x, use_qjit):
     jx = jnp.array([x])
-    x2 = FCallExpr(c(POI.fE(ConstExpr(jx)))(POI.fE(ConstExpr(jx))),[])
+    x2 = saturates_expr1(ConstExpr(jx), saturates_poi1(ConstExpr(jx), c()))
     assert jx == evalPOI_(POI.fE(x2), use_qjit)
 
 
@@ -131,19 +118,20 @@ def test_eval_cond(c, x, use_qjit):
 @settings(max_examples=10)
 def test_eval_for(l, x, use_qjit):
     jx = jnp.array([x])
-    r = FCallExpr(l(POI.fE(VRefExpr(VName('s')))),[ConstExpr(jx)])
+    r = saturates_expr1(ConstExpr(jx), saturates_poi1(VRefExpr(VName('s')), l()))
     assert jx == evalPOI_(POI.fE(r), use_qjit)
 
 
 @mark.parametrize('use_qjit', [True, False])
 @given(x=complexes(allow_nan=False, allow_infinity=False),
        l=whileloops(lvars=just(VName('i')),
-                    lexprs=just(falseExpr)))
+                    lexpr=lambda _: just(falseExpr)))
 @settings(max_examples=10)
 def test_eval_while(l, x, use_qjit):
     jx = jnp.array([x])
-    r = FCallExpr(l(POI.fE(VRefExpr(VName('i')))),[ConstExpr(jx)])
-    assert jx == evalPOI_(POI.fE(r), use_qjit)
+    r = saturates_poi1(addExpr(VRefExpr(VName('i')), ConstExpr(1)),
+                       saturates_expr1(ConstExpr(jx), l()))
+    assert jx == evalPOI_(POI.fE(r), use_qjit=use_qjit)
 
 
 @given(g=qgates, m=qmeasurements)
@@ -191,8 +179,8 @@ def test_build_destructive_update():
     l = WhileLoopExpr(VName("i"), trueExpr, POI(), ControlFlowStyle.Catalyst)
     c = CondExpr(trueExpr, POI(), POI(), ControlFlowStyle.Catalyst)
     b = build(POI())
-    b.update(0, POI.fE(saturate_expr(l, ConstExpr(0))))
-    b.update(1, POI.fE(saturate_expr(c, ConstExpr(1))))
+    b.update(0, POI.fE(saturate_expr1(l, ConstExpr(0))))
+    b.update(1, POI.fE(saturate_expr1(c, ConstExpr(1))))
     assert len(b.pois)==4
     s1 = pstr_builder(b)
     b.update(0, b.pois[0].poi)
@@ -205,7 +193,7 @@ def test_build_assign_layout():
     va = AssignStmt(VName('a'),ConstExpr(33))
     vb = AssignStmt(VName('b'),ConstExpr(42))
     l = WhileLoopExpr(VName("i"), trueExpr, POI([vb],VRefExpr(VName('b'))), ControlFlowStyle.Catalyst)
-    b = build(POI([va],saturate_expr(l, ConstExpr(0))))
+    b = build(POI([va],saturate_expr1(l, ConstExpr(0))))
     s = pstr_builder(b)
     print(b.pois[0].ctx)
 
@@ -299,7 +287,7 @@ def run():
         o,code = compilePOI(
             bindAssign(b.pois[0].poi,
                        lambda e: POI([AssignStmt(None,e)],FCallExpr(VRefExpr(FName("qml.state")),[]))),
-            use_qjit=True, name="main", qwires=3, args=[arg])
+            use_qjit=True, name="main", qnode_wires=3, args=[arg])
         print("2. Compiled code:")
         print(code)
         print("2. Press Enter to eval")

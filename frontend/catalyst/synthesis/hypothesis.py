@@ -9,7 +9,8 @@ from hypothesis.strategies import (text, decimals, integers, characters, from_re
 
 from .grammar import (VName, FName, FDefStmt, CondExpr, ForLoopExpr, POI, WhileLoopExpr, trueExpr,
                       falseExpr, ControlFlowStyle, ConstExpr, Expr, VRefExpr, bindUnary, signature,
-                      NoneExpr, FName, FDefStmt, FCallExpr)
+                      NoneExpr, FName, FDefStmt, FCallExpr, lessExpr, eqExpr)
+
 from .builder import build
 from .pprint import pprint
 
@@ -48,18 +49,17 @@ def conds(draw,
           cond=sampled_from([trueExpr, falseExpr]),
           style=ControlFlowStyle.Catalyst):
     cond=draw(cond)
-    return (lambda a: (lambda b:
-            CondExpr(
+    return partial(CondExpr,
                 cond=cond,
-                trueBranch=a,
-                falseBranch=b,
-                style=style)))
+                trueBranch=POI(),
+                falseBranch=POI(),
+                style=style)
 
 
 @composite
 def forloops(draw,
-             lvars=vnames(sampled_from(['i','j','k'])),
-             svars=vnames(sampled_from(['i','j','k'])),
+             lvars=vnames(sampled_from('ijk')),
+             svars=vnames(sampled_from('lmn')),
              lbounds=integers(0,10),
              ubounds=integers(0,10),
              style=ControlFlowStyle.Catalyst):
@@ -67,28 +67,26 @@ def forloops(draw,
     statevar=draw(svars)
     lbound=ConstExpr(draw(lbounds))
     ubound=ConstExpr(draw(ubounds))
-    return (lambda a:
-            ForLoopExpr(
+    return partial(ForLoopExpr,
                 loopvar=loopvar,
                 statevar=statevar,
                 lbound=lbound,
                 ubound=ubound,
-                body=a,
-                style=style))
+                body=POI(),
+                style=style)
 
 @composite
 def whileloops(draw,
-               lvars=vnames(sampled_from(['i','j','k'])),
-               lexprs=sampled_from([trueExpr, falseExpr]),
+               lvars=vnames(sampled_from('ijk')),
+               lexpr=lambda x: just(eqExpr(x,ConstExpr(0))),
                style=ControlFlowStyle.Catalyst):
     loopvar=draw(lvars)
-    cond=draw(lexprs)
-    return (lambda a:
-            WhileLoopExpr(
+    cond=draw(lexpr(VRefExpr(loopvar)))
+    return partial(WhileLoopExpr,
                 loopvar=loopvar,
                 cond=cond,
-                body=a,
-                style=style))
+                body=POI(),
+                style=style)
 
 qml_X = FCallExpr(VRefExpr(FName("qml.X")),[ConstExpr(0)])
 qml_H = FCallExpr(VRefExpr(FName("qml.Hadamard")),[ConstExpr(0)])

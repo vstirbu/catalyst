@@ -19,7 +19,7 @@ try:
 except ImportError:
     CATALYST_LOADED = False
 
-from .grammar import (Expr, RetStmt, FDefStmt, FCallExpr, VName, FName, VRefExpr, signature as
+from .grammar import (Expr, Stmt, RetStmt, FDefStmt, FCallExpr, VName, FName, VRefExpr, signature as
                       expr_signature, isinstance_expr, POI)
 from .pprint import pstr_stmt, pstr_expr, pprint
 from .builder import build
@@ -29,17 +29,22 @@ PythonCode = str
 PythonObj = Any
 
 
-def compilePOI(p:POI,
+def wrapInMain(p:POI, name:Optional[str]=None, args:Optional[List[Expr]]=None, use_qjit:bool=True,
+               **kwargs) -> Stmt:
+    name = name if name is not None else "main"
+    args = args if args is not None else []
+    return FDefStmt(FName(name), args, p, qjit=use_qjit, **kwargs)
+
+
+def compilePOI(p:Union[Stmt,POI],
                use_qjit:bool=True,
                name:Optional[str]=None,
                args:Optional[List[Expr]]=None,
                **kwargs) -> Tuple[PythonObj, PythonCode]:
     """ Insert the point of insertion into the top-level function and use the Python built-in
     `compile` function on it """
-    name = name if name is not None else "main"
-    args = args if args is not None else []
-    main = FDefStmt(FName(name), args, p, qjit=use_qjit, **kwargs)
-    code = '\n'.join(pstr_stmt(main))
+    p = wrapInMain(p, name, args, **kwargs) if isinstance(p, POI) else p
+    code = '\n'.join(pstr_stmt(p))
     o = compile(code, "<compilePOI>", "single")
     return (o, code)
 

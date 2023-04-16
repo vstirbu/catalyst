@@ -7,7 +7,7 @@ from itertools import permutations, product
 from .grammar import (VName, FName, Expr, Stmt, FCallExpr, VRefExpr, AssignStmt, CondExpr,
                       WhileLoopExpr, FDefStmt, Program, RetStmt, ConstExpr, POI, ForLoopExpr,
                       WhileLoopExpr, trueExpr, falseExpr, ControlFlowStyle as CFS, assert_never,
-                      NoneExpr, saturate_expr, addExpr, lessExpr, Signature,
+                      NoneExpr, saturate_expr1, addExpr, lessExpr, Signature,
                       AssignStmt, signature, get_vars)
 
 from .builder import Builder, contextualize_expr, build
@@ -46,7 +46,7 @@ def control_flows(expr_lib:List[Expr],
                             tail = addExpr(VRefExpr(v[1]),ConstExpr(1))
                             b.update(p,
                                      POI([AssignStmt(None, FCallExpr(VRefExpr(g[0]),[VRefExpr(v[0])]))],
-                                         saturate_expr(deepcopy(e), tail) if e else tail))
+                                         saturate_expr1(deepcopy(e), tail) if e else tail))
                         yield b
                     except AssertionError as e:
                         pass

@@ -186,7 +186,7 @@ def pstr_expr(expr:Expr,
                 args.append(le)
             return acc_body, (
                 f"{_parens(arg_expr[0],args[0])} {e.vname.val} {_parens(arg_expr[1],args[1])}"
-                if (e.vname.val in ">=<=+-/*" and len(arg_expr)==2) else
+                if (all(c in "!>=<=+-/*" for c in e.vname.val) and len(arg_expr)==2) else
                 f"{e.vname.val}({', '.join(args)})" )
     elif isinstance(e, ConstExpr):
         if isinstance(e.val, bool): # Should be above 'int'

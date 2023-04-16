@@ -2,11 +2,13 @@
 language. The `Program` dataclass is supposed to be top-level node of the AST.
 """
 
-from typing import (Any, List, Tuple, Optional, Dict, Union, NoReturn, Set, Callable)
+from typing import (Any, List, Tuple, Optional, Dict, Union, NoReturn, Set, Callable, Iterable,
+                    Generator)
 from dataclasses import dataclass, field
 from copy import deepcopy
 from enum import Enum
 from functools import reduce
+from itertools import cycle
 from jax import Array as JaxArray
 
 
@@ -124,6 +126,11 @@ def lessExpr(a,b) -> FCallExpr:
 def addExpr(a,b) -> FCallExpr:
     return FCallExpr(VRefExpr(FName('+')),[a,b])
 
+def neqExpr(a,b) -> FCallExpr:
+    return FCallExpr(VRefExpr(FName('!=')),[a,b])
+
+def eqExpr(a,b) -> FCallExpr:
+    return FCallExpr(VRefExpr(FName('==')),[a,b])
 
 Stmt = Union["AssignStmt", "FDefStmt", "RetStmt"]
 
@@ -216,8 +223,8 @@ def reduce_stmt_expr(e:Union[Stmt,Expr], f:Callable[[Union[Stmt,Expr],Acc],Acc],
     if isinstance(e, FCallExpr):
         return _down([e.expr] + e.args)
     elif isinstance(e, CondExpr):
-        return _down(e.trueBranch.stmts + [e.trueBranch.expr] +
-                     (e.falseBranch.stmts + [e.falseBranch.expr] if e.falseBranch else []))
+        return _down((e.trueBranch.stmts + [e.trueBranch.expr] if e.trueBranch.expr else []) +
+                     (e.falseBranch.stmts + [e.falseBranch.expr] if e.falseBranch and e.falseBranch.expr else []))
     elif isinstance(e, ForLoopExpr):
         return _down([e.lbound, e.ubound] + e.body.stmts + ([e.body.expr] if e.body.expr else []))
     elif isinstance(e, WhileLoopExpr):
@@ -267,16 +274,36 @@ def get_pois(e:Union[Stmt,Expr]) -> List[POI]:
     return reduce_stmt_expr(e, lambda e,acc: acc+_pois(e), [])
 
 
-def saturate_expr(e:Expr, arg:Expr) -> Expr:
+def saturate_expr(e:Expr, args:Iterable[Expr]) -> Expr:
     s = signature(e)
-    return FCallExpr(e, [arg for _ in s.args]) if s else e
+    return FCallExpr(e, [next(args) for _ in s.args]) if s else e
 
-
-def saturate_pois2(e:Expr, arg:Union[POI,Expr]) -> Expr:
+def saturate_poi(e:Expr, args:Iterable[Union[POI,Expr]]) -> Expr:
     e2 = deepcopy(e)
-    arg = arg if isinstance(arg, POI) else POI.fromExpr(arg)
     for poi in get_pois(e2):
-        poi.stmts = deepcopy(arg.stmts)
-        poi.expr = deepcopy(arg.expr)
+        if poi.expr is None:
+            arg = next(args)
+            arg = arg if isinstance(arg, POI) else POI.fromExpr(arg)
+            poi.stmts = deepcopy(arg.stmts)
+            poi.expr = deepcopy(arg.expr)
     return e2
+
+def saturate_expr1(e, arg):
+    return saturate_expr(e, cycle([arg]))
+
+def saturate_poi1(e, arg):
+    return saturate_poi(e, cycle([arg]))
+
+
+def saturates_expr(args, e):
+    return saturate_expr(e, args)
+
+def saturates_poi(args, e):
+    return saturate_poi2(e, args)
+
+def saturates_expr1(arg, e):
+    return saturate_expr(e, cycle([arg]))
+
+def saturates_poi1(arg, e):
+    return saturate_poi(e, cycle([arg]))
 
