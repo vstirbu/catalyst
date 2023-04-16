@@ -40,13 +40,15 @@ def control_flows(expr_lib:List[Expr],
                                            g_sample,
                                            expanded_to(e_sample,len(v_sample)),
                                            v_sample):
+                            ctx = b.at(p).ctx
                             assert len(v) == 2
-                            assert all(vi in b.vscope_at(p) for vi in v), \
-                                f"{v} not in scope: {b.vscope_at(p)}"
-                            tail = addExpr(VRefExpr(v[1]),ConstExpr(1))
+                            assert all(vi in ctx.get_vscope() for vi in v), \
+                                f"{v} not in scope: {ctx.get_vscope()}"
+                            n = saturate_expr1(deepcopy(e) if e else VRefExpr(v[1]), VRefExpr(v[1]))
+                            r = addExpr(VRefExpr(ctx.statevar), n) if ctx.statevar else n
                             b.update(p,
-                                     POI([AssignStmt(None, FCallExpr(VRefExpr(g[0]),[VRefExpr(v[0])]))],
-                                         addExpr(saturate_expr1(deepcopy(e), tail), ConstExpr(1)) if e else tail))
+                                     POI([AssignStmt(None, FCallExpr(VRefExpr(g[0]),
+                                                                     [VRefExpr(v[0])]))], r))
                         yield b
                     except AssertionError as e:
                         pass

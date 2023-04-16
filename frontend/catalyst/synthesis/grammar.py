@@ -247,7 +247,7 @@ def get_vars(e:Union[Stmt,Expr]) -> List[VName]:
         if isinstance(e, ForLoopExpr):
             return [e.loopvar] + ([e.statevar] if e.statevar else [])
         elif isinstance(e, WhileLoopExpr):
-            return [e.loopvar]
+            return [e.statevar]
         elif isinstance(e, VRefExpr):
             return [e.vname]
         elif isinstance(e, FDefStmt):

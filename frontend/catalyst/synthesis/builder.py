@@ -19,12 +19,17 @@ class Context:
     vscope: List[VName]
     nwires: Optional[int]
     parent: Optional["Context"]
+    statevar: Optional[VName]
 
     def __init__(self,
-                 vscope:Optional[List[VName]]=None, nwires=None, parent=None):
+                 vscope:Optional[List[VName]]=None,
+                 nwires=None,
+                 statevar=None,
+                 parent=None):
         self.vscope = vscope if vscope is not None else []
         self.nwires = nwires
         self.parent = parent
+        self.statevar = statevar
 
     def get_vscope(self) -> List[VName]:
         return self.vscope + (self.parent.get_vscope() if self.parent else [])
@@ -91,7 +96,7 @@ class Builder:
 def pois_scan_inplace(ss:List[Stmt], ctx:Context, acc:List[PWC]) -> Context:
     for s in ss:
         if isinstance(s, AssignStmt) and s.vname is not None:
-            ctx = Context([s.vname], parent=ctx)
+            ctx = Context([s.vname], statevar=ctx.statevar, parent=ctx)
         acc.extend(contextualize_stmt(s, ctx))
     return ctx
 
@@ -113,14 +118,14 @@ def contextualize_expr(e:Expr, ctx:Optional[Context]=None) -> List[PWC]:
     elif isinstance(e, ForLoopExpr):
         acc.extend(contextualize_expr(e.lbound, ctx))
         acc.extend(contextualize_expr(e.ubound, ctx))
-        ctx1 = Context(parent=ctx, vscope=[e.loopvar])
+        ctx1 = Context(parent=ctx, statevar=e.statevar, vscope=[e.loopvar])
         ctx1 = pois_scan_inplace(e.body.stmts, ctx1, acc)
         acc.append(PWC(e.body, ctx1))
         if e.body.expr is not None:
             acc.extend(contextualize_expr(e.body.expr, ctx1))
     elif isinstance(e, WhileLoopExpr):
         acc.extend(contextualize_expr(e.cond, ctx))
-        ctx1 = Context(parent=ctx, vscope=[e.statevar])
+        ctx1 = Context(parent=ctx, statevar=e.statevar, vscope=[e.statevar])
         ctx1 = pois_scan_inplace(e.body.stmts, ctx1, acc)
         acc.append(PWC(e.body, ctx1))
         if e.body.expr is not None:
