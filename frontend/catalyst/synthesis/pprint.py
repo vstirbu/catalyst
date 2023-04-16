@@ -162,7 +162,7 @@ def pstr_expr(expr:Expr,
     elif isinstance(e, WhileLoopExpr):
         assert len(arg_expr)==1
         if _style(e.style) == ControlFlowStyle.Python:
-            accArg = pstr_stmt(AssignStmt(e.loopvar, arg_expr[0]), st, opt)
+            accArg = pstr_stmt(AssignStmt(e.statevar, arg_expr[0]), st, opt)
             accCond, lexpr = pstr_expr(e.cond, st, opt)
             st1, svar = st.tabulate().issue("_whileloop")
             return (
@@ -170,17 +170,17 @@ def pstr_expr(expr:Expr,
                 accCond +
                 _in(st, [f"while {lexpr}:"]) +
                 _ne(st, sum([pstr_stmt(s, st1, opt) for s in e.body.stmts], []) +
-                        (pstr_stmt(AssignStmt(e.loopvar, e.body.expr), st1, opt) if e.body.expr else [])) +
+                        (pstr_stmt(AssignStmt(e.statevar, e.body.expr), st1, opt) if e.body.expr else [])) +
                 _hi(st1, opt, e.body),
-                e.loopvar.val)
+                e.statevar.val)
         elif _style(e.style) == ControlFlowStyle.Catalyst:
             accArg, sarg = pstr_expr(arg_expr[0], st, opt)
             accCond, lexpr = pstr_expr(e.cond, st, opt)
             st1, nwhileloop = st.tabulate().issue("whileloop")
             return (
                 accArg + accCond +
-                _in(st, [f"@while_loop(lambda {e.loopvar.val}:{lexpr})",
-                         f"def {nwhileloop}({e.loopvar.val}):"]) +
+                _in(st, [f"@while_loop(lambda {e.statevar.val}:{lexpr})",
+                         f"def {nwhileloop}({e.statevar.val}):"]) +
                 _ne(st, sum([pstr_stmt(s, st1, opt) for s in e.body.stmts],[]) +
                         (pstr_stmt(RetStmt(e.body.expr), st1, opt) if e.body.expr else [])) +
                 _hi(st1, opt, e.body), f"{nwhileloop}({sarg})")

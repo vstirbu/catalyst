@@ -103,7 +103,7 @@ class ForLoopExpr:
 @dataclass(frozen=True)
 class WhileLoopExpr:
     """ Expression - while loop """
-    loopvar: VName
+    statevar: VName
     cond: Expr
     body: POI
     style: ControlFlowStyle

@@ -120,7 +120,7 @@ def contextualize_expr(e:Expr, ctx:Optional[Context]=None) -> List[PWC]:
             acc.extend(contextualize_expr(e.body.expr, ctx1))
     elif isinstance(e, WhileLoopExpr):
         acc.extend(contextualize_expr(e.cond, ctx))
-        ctx1 = Context(parent=ctx, vscope=[e.loopvar])
+        ctx1 = Context(parent=ctx, vscope=[e.statevar])
         ctx1 = pois_scan_inplace(e.body.stmts, ctx1, acc)
         acc.append(PWC(e.body, ctx1))
         if e.body.expr is not None:
@@ -134,7 +134,7 @@ def contextualize_expr(e:Expr, ctx:Optional[Context]=None) -> List[PWC]:
     return acc
 
 def contextualize_stmt(s:Stmt, ctx:Optional[Context]=None) -> List[PWC]:
-    """ Recursively collect insertion contexts across the statement. """
+    """ Recursively collect insertion points contexts across the statement. """
     acc:List[PWC] = list()
     if isinstance(s, AssignStmt):
         acc.extend(contextualize_expr(s.expr, ctx))

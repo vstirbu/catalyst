@@ -77,13 +77,13 @@ def forloops(draw,
 
 @composite
 def whileloops(draw,
-               lvars=vnames(sampled_from('ijk')),
+               statevars=vnames(sampled_from('ijk')),
                lexpr=lambda x: just(eqExpr(x,ConstExpr(0))),
                style=ControlFlowStyle.Default):
-    loopvar=draw(lvars)
-    cond=draw(lexpr(VRefExpr(loopvar)))
+    statevar=draw(statevars)
+    cond=draw(lexpr(VRefExpr(statevar)))
     return partial(WhileLoopExpr,
-                loopvar=loopvar,
+                statevar=statevar,
                 cond=cond,
                 body=POI(),
                 style=style)

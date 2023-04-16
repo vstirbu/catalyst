@@ -129,7 +129,7 @@ def test_eval_for(l, x, use_qjit):
 
 @mark.parametrize('use_qjit', [True, False])
 @given(x=complexes(allow_nan=False, allow_infinity=False),
-       l=whileloops(lvars=just(VName('i')),
+       l=whileloops(statevars=just(VName('i')),
                     lexpr=lambda _: just(falseExpr)))
 @settings(max_examples=10)
 def test_eval_while(l, x, use_qjit):
