@@ -46,9 +46,9 @@ def control_flows(expr_lib:List[Expr],
                             assert len(v) >= 2, f"len({v}) < 2"
                             if not all(vi in ctx.get_vscope() for vi in v):
                                 raise IndexError(f"{v} not in scope: {ctx.get_vscope()}")
-                            stmts = [AssignStmt_(callExpr(g[0], [v[0]]))] if g else []
+                            stmts = [assignStmt_(callExpr(g[0], [v[0]]))] if g else []
                             res = saturate_expr1(e if e else v[1], v[1])
-                            expr = addExpr(VRefExpr(ctx.statevar), res) if ctx.statevar else res
+                            expr = addExpr(ctx.statevar, res) if ctx.statevar else res
                             b.update(p, POI(stmts, expr), ignore_nonempty=True)
                         yield b
                     except IndexError as err:

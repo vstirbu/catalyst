@@ -271,7 +271,7 @@ def test_run(use_qjit, qnode_device, scalar):
 sample_spec:List[Expr] = [
     # WhileLoopExpr(VName("i"), trueExpr, POI(), CFS.Catalyst) : 1,
     WhileLoopExpr(VName("j1"), lessExpr(VName("j1"),2), POI(), CFS.Default),
-    ForLoopExpr(VName("k1"), POI.fE(0), POI.fE(2), POI(), CFS.Default, VName("k2")),
+    ForLoopExpr(VName("k1"), POI.fE(1), POI.fE(2), POI(), CFS.Default, VName("k2")),
     # CondExpr(trueExpr, POI(), POI(), CFS.Catalyst) : 1,
 ]
 
@@ -306,11 +306,15 @@ def run():
         print(code1)
         print("(^^^ Catalyst, Python vvv)")
         print(code2)
-        # print("2. Press Enter to eval")
+        print("2. Press Enter to eval")
         input()
-        # r = evalPOI(o, name="main", args=[(arg,0)])
-        # print("3. Evaluation result:")
-        # print(r)
+        r1 = evalPOI(o1, name="main", args=[(arg,1)])
+        r2 = evalPOI(o2, name="main", args=[(arg,1)])
+        print("3. Evaluation result:")
+        print(r1)
+        print(r2)
+        assert_allclose(r1, r2)
+        input()
 
 
 
