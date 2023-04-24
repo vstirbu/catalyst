@@ -15,6 +15,9 @@
   These are called pipelines, as they contain multiple passes.
   [#38](https://github.com/PennyLaneAI/catalyst/pull/38)
 
+* Handle C++ exceptions without unwinding the whole stack.
+  [#99](https://github.com/PennyLaneAI/catalyst/pull/99)
+
 <h3>Breaking changes</h3>
 
 <h3>Bug fixes</h3>
