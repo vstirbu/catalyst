@@ -104,19 +104,17 @@ prependResAttrsToArgAttrs(OpBuilder &builder,
 
 /// Converts the function type to a C-compatible format, in particular using
 /// pointers to memref descriptors for arguments.
-static std::pair<Type, bool>
+static std::pair<Type, std::pair<bool, bool>>
 convertFunctionTypeCWrapper(OpBuilder &rewriter, LLVMTypeConverter typeConverter, FunctionType type) {
   SmallVector<Type, 4> inputs;
-  bool resultIsNowArg = false;
 
-  Type resultType = type.getNumResults() == 0
+  bool noResults = type.getNumResults() == 0;
+  Type resultType = noResults
                         ? LLVM::LLVMVoidType::get(rewriter.getContext())
                         : typeConverter.packFunctionResults(type.getResults());
-  if (!resultType)
-    return {};
 
-
-  Type inputType = type.getNumInputs() == 0
+  bool noInputs = type.getNumInputs() == 0;
+  Type inputType = noInputs
                         ? LLVM::LLVMVoidType::get(rewriter.getContext())
                         : typeConverter.packFunctionResults(type.getInputs());
 
@@ -125,14 +123,13 @@ convertFunctionTypeCWrapper(OpBuilder &rewriter, LLVMTypeConverter typeConverter
     // pointer argument, instead.
     inputs.push_back(LLVM::LLVMPointerType::get(structType));
     resultType = LLVM::LLVMVoidType::get(rewriter.getContext());
-    resultIsNowArg = true;
   }
 
   if (auto structType = inputType.dyn_cast<LLVM::LLVMStructType>()) {
     inputs.push_back(LLVM::LLVMPointerType::get(structType));
   }
 
-  return {LLVM::LLVMFunctionType::get(resultType, inputs), resultIsNowArg};
+  return {LLVM::LLVMFunctionType::get(resultType, inputs), {noResults, noInputs}};
 }
 
 /// Creates an auxiliary function with pointer-to-memref-descriptor-struct
@@ -151,46 +148,31 @@ static void wrapForExternalCallers(OpBuilder &rewriter, Location loc,
   SmallVector<NamedAttribute, 4> attributes;
   filterFuncAttributes(funcOp->getAttrs(), /*filterArgAndResAttrs=*/false,
                        attributes);
-  auto [wrapperFuncType, resultIsNowArg] = convertFunctionTypeCWrapper(rewriter, typeConverter, type);
+  auto [wrapperFuncType, result_inputs] = convertFunctionTypeCWrapper(rewriter, typeConverter, type);
   funcOp->emitRemark() << wrapperFuncType;
+  funcOp->emitRemark() << result_inputs.first << result_inputs.second;
+/*
+define void @_mlir_ciface_jit.f(ptr %0, ptr %1) {                  
+  %3 = load { ptr, ptr, i64 }, ptr %1, align 8
+  %4 = extractvalue { ptr, ptr, i64 } %3, 0
+  %5 = extractvalue { ptr, ptr, i64 } %3, 1 
+  %6 = extractvalue { ptr, ptr, i64 } %3, 2
+  %7 = call { ptr, ptr, i64, [1 x i64], [1 x i64] } @jit.f(ptr %4, ptr %5, i64 %6)
+  store { ptr, ptr, i64, [1 x i64], [1 x i64] } %7, ptr %0, align 8
+  ret void                                  
+}   
+
+DEF F(ARG0, ARG1):
+  STRUCT_OF_POINTERS_TO_MEMREFS = *ARG1
+  FOR EACH FIELD IN STRUCT_OF_POINTER_TO_MEMREFS:
+    MEMREF_PTR = EXTRACT_VALUE STRUCT_OF_POINTER_TO_MEMREFS FIELD
+    MEMREF = *MEMREF_PTR
+    FOR EACH FIELD IN MEMREF
+       SCALAR = EXTRACT_VALUE MEMREF FIELD
+  RESULT = CALL(SCALAR_1, SCALAR_2, ... SCALAR_n)
+  *ARG0 = RESULT
+*/
   return;
-  if (resultIsNowArg)
-    prependResAttrsToArgAttrs(rewriter, attributes, funcOp.getNumArguments());
-  auto wrapperFuncOp = rewriter.create<LLVM::LLVMFuncOp>(
-      loc, llvm::formatv("_mlir_ciface_{0}", funcOp.getName()).str(),
-      wrapperFuncType, LLVM::Linkage::External, /*dsoLocal*/ false,
-      /*cconv*/ LLVM::CConv::C, attributes);
-
-  OpBuilder::InsertionGuard guard(rewriter);
-  rewriter.setInsertionPointToStart(wrapperFuncOp.addEntryBlock());
-
-  SmallVector<Value, 8> args;
-  size_t argOffset = resultIsNowArg ? 1 : 0;
-  for (auto &en : llvm::enumerate(type.getInputs())) {
-    Value arg = wrapperFuncOp.getArgument(en.index() + argOffset);
-    if (auto memrefType = en.value().dyn_cast<MemRefType>()) {
-      Value loaded = rewriter.create<LLVM::LoadOp>(loc, arg);
-      MemRefDescriptor::unpack(rewriter, loc, loaded, memrefType, args);
-      continue;
-    }
-    if (en.value().isa<UnrankedMemRefType>()) {
-      Value loaded = rewriter.create<LLVM::LoadOp>(loc, arg);
-      UnrankedMemRefDescriptor::unpack(rewriter, loc, loaded, args);
-      continue;
-    }
-
-    args.push_back(arg);
-  }
-
-  auto call = rewriter.create<LLVM::CallOp>(loc, newFuncOp, args);
-
-  if (resultIsNowArg) {
-    rewriter.create<LLVM::StoreOp>(loc, call.getResult(),
-                                   wrapperFuncOp.getArgument(0));
-    rewriter.create<LLVM::ReturnOp>(loc, ValueRange{});
-  } else {
-    rewriter.create<LLVM::ReturnOp>(loc, call.getResults());
-  }
 }
 
 /// Creates an auxiliary function with pointer-to-memref-descriptor-struct
