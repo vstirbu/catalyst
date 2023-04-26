@@ -110,25 +110,27 @@ convertFunctionTypeCWrapper(OpBuilder &rewriter, LLVMTypeConverter typeConverter
 
   bool noResults = type.getNumResults() == 0;
   Type resultType = noResults
-                        ? LLVM::LLVMVoidType::get(rewriter.getContext())
+                        ? LLVM::LLVMPointerType::get(rewriter.getContext())
                         : typeConverter.packFunctionResults(type.getResults());
 
   bool noInputs = type.getNumInputs() == 0;
   Type inputType = noInputs
-                        ? LLVM::LLVMVoidType::get(rewriter.getContext())
+                        ? LLVM::LLVMPointerType::get(rewriter.getContext())
                         : typeConverter.packFunctionResults(type.getInputs());
 
   if (auto structType = resultType.dyn_cast<LLVM::LLVMStructType>()) {
-    // Struct types cannot be safely returned via C interface. Make this a
-    // pointer argument, instead.
     inputs.push_back(LLVM::LLVMPointerType::get(structType));
-    resultType = LLVM::LLVMVoidType::get(rewriter.getContext());
+  } else {
+    inputs.push_back(inputType);
   }
 
   if (auto structType = inputType.dyn_cast<LLVM::LLVMStructType>()) {
     inputs.push_back(LLVM::LLVMPointerType::get(structType));
+  } else {
+    inputs.push_back(inputType);
   }
 
+  resultType = LLVM::LLVMVoidType::get(rewriter.getContext());
   return {LLVM::LLVMFunctionType::get(resultType, inputs), {noResults, noInputs}};
 }
 
