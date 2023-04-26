@@ -58,7 +58,7 @@ def inject_functions(module, runtime, ctx):
     This function appends functions to the input module.
     """
     # Add C interface for the quantum function.
-    module.body.operations[0].attributes["llvm.emit_c_interface"] = ir.UnitAttr.get(context=ctx)
+    module.body.operations[0].attributes["llvm.emit_special_interface"] = ir.UnitAttr.get(context=ctx)
 
     setup_module = gen_setup(runtime, ctx)
     setup_func = setup_module.body.operations[0]
