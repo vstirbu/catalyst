@@ -205,7 +205,7 @@ class CompiledFunction:
         teardown.restypes = None
 
         # We are calling the c-interface
-        function = shared_object["_mlir_ciface_" + func_name]
+        function = shared_object["_catalyst_pyface__catalyst_ciface_"]
         # Guaranteed from _mlir_ciface specification
         function.restypes = None
         # Not needed, computed from the arguments.
@@ -397,7 +397,8 @@ class CompiledFunction:
         for arg in args:
             numpy_arg = np.asarray(arg)
             numpy_arg_buffer.append(numpy_arg)
-            c_abi_args.append(get_ranked_memref_descriptor(numpy_arg))
+            c_abi_ptr = ctypes.pointer(get_ranked_memref_descriptor(numpy_arg))
+            c_abi_args.append(c_abi_ptr)
 
         # pylint: disable=too-few-public-methods
         class CompiledFunctionArgValue(ctypes.Structure):
