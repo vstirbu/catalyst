@@ -418,9 +418,11 @@ class CompiledFunction:
 
         arg_value_pointer = ctypes.POINTER(ctypes.c_int)()
 
-        if len(args) > 0:
+        if len(args) > 1:
             arg_value = CompiledFunctionArgValue(c_abi_args)
             arg_value_pointer = ctypes.pointer(arg_value)
+        elif len(args) == 1:
+            arg_value_pointer = c_abi_args[0]
 
         c_abi_args = [return_value_pointer] + [arg_value_pointer]
         return c_abi_args, numpy_arg_buffer
