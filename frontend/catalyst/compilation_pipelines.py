@@ -386,19 +386,42 @@ class CompiledFunction:
                 numpy arrays.
 
         """
-        c_abi_args = []
         numpy_arg_buffer = []
+        return_value_pointer = ctypes.POINTER(ctypes.c_int)()  # This is the null pointer
 
         if restype:
             return_value_pointer = CompiledFunction.restype_to_memref_descs(restype)
-            c_abi_args.append(return_value_pointer)
+
+        c_abi_args = []
 
         for arg in args:
             numpy_arg = np.asarray(arg)
             numpy_arg_buffer.append(numpy_arg)
-            c_abi_arg = get_ranked_memref_descriptor(numpy_arg)
-            c_abi_arg_ptr = ctypes.pointer(c_abi_arg)
-            c_abi_args.append(c_abi_arg_ptr)
+            c_abi_args.append(get_ranked_memref_descriptor(numpy_arg))
+
+        # pylint: disable=too-few-public-methods
+        class CompiledFunctionArgValue(ctypes.Structure):
+            """Programmatically create a structure which holds N tensors of possibly different T base types."""
+
+            _fields_ = [("f" + str(i), type(t)) for i, t in enumerate(c_abi_args)]
+
+            def __iter__(self):
+                for f, _ in CompiledFunctionArgValue._fields_:
+                    memref = getattr(self, f)
+                    yield memref
+
+            def __init__(self, c_abi_args):
+                for ft_tuple, c_abi_arg in zip(CompiledFunctionArgValue._fields_, c_abi_args):
+                    f = ft_tuple[0]
+                    setattr(self, f, c_abi_arg)
+
+        arg_value_pointer = ctypes.POINTER(ctypes.c_int)()
+
+        if len(args) > 0:
+            arg_value = CompiledFunctionArgValue(c_abi_args)
+            arg_value_pointer = ctypes.pointer(arg_value)
+
+        c_abi_args = [return_value_pointer] + [arg_value_pointer]
         return c_abi_args, numpy_arg_buffer
 
     def __call__(self, *args, **kwargs):

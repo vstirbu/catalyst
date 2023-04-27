@@ -103,7 +103,7 @@ static void prependResAttrsToArgAttrs(OpBuilder &builder,
 
 /// Converts the function type to a C-compatible format, in particular using
 /// pointers to memref descriptors for arguments.
-static std::pair<Type, std::pair<bool, bool>>
+static std::pair<Type, std::pair<size_t, size_t>>
 convertFunctionTypeCWrapper(OpBuilder &rewriter, LLVMTypeConverter typeConverter, FunctionType type)
 {
     SmallVector<Type, 4> inputs;
@@ -131,7 +131,8 @@ convertFunctionTypeCWrapper(OpBuilder &rewriter, LLVMTypeConverter typeConverter
     }
 
     resultType = LLVM::LLVMVoidType::get(rewriter.getContext());
-    return {LLVM::LLVMFunctionType::get(resultType, inputs), {!noResults, !noInputs}};
+    return {LLVM::LLVMFunctionType::get(resultType, inputs),
+            {type.getNumResults(), type.getNumInputs()}};
 }
 
 /// Creates an auxiliary function with pointer-to-memref-descriptor-struct
@@ -164,7 +165,7 @@ static void wrapForExternalCallers(OpBuilder &rewriter, Location loc,
       IF ARG1:
         STRUCT_OF_POINTERS_TO_MEMREFS = *ARG1
         FOR EACH FIELD IN STRUCT_OF_MEMREFS:
-	  MEMREF = FIELD
+      MEMREF = FIELD
           FOR EACH FIELD IN MEMREF
             SCALAR = EXTRACT_VALUE MEMREF FIELD
         RESULT = CALL(SCALAR_1, SCALAR_2, ... SCALAR_n)
@@ -179,9 +180,15 @@ static void wrapForExternalCallers(OpBuilder &rewriter, Location loc,
 
     if (hasInputs) {
         Value arg = wrapperFuncOp.getArgument(1);
+
         Value structOfMemrefs = rewriter.create<LLVM::LoadOp>(loc, arg);
+        Type aType = structOfMemrefs.getType();
+        bool isMemref = (bool)aType.dyn_cast<MemRefType>();
         for (auto &en : llvm::enumerate(type.getInputs())) {
-            Value memref = rewriter.create<LLVM::ExtractValueOp>(loc, structOfMemrefs, en.index());
+            Value memref =
+                hasInputs == 1
+                    ? structOfMemrefs
+                    : rewriter.create<LLVM::ExtractValueOp>(loc, structOfMemrefs, en.index());
             if (auto memrefType = en.value().dyn_cast<MemRefType>()) {
                 MemRefDescriptor::unpack(rewriter, loc, memref, memrefType, args);
                 continue;

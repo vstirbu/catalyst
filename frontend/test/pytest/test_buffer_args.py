@@ -61,7 +61,7 @@ class TestReturnValues:
             qml.SingleExcitation(params[1], wires=[0, 2])
             return qml.expval(qml.PauliZ(2))
 
-        @qjit()
+        @qjit(keep_intermediate=True)
         def order1(params):
             diff = grad(circuit, argnum=0)
             h = diff(params)
