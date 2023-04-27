@@ -131,7 +131,7 @@ convertFunctionTypeCWrapper(OpBuilder &rewriter, LLVMTypeConverter typeConverter
     }
 
     resultType = LLVM::LLVMVoidType::get(rewriter.getContext());
-    return {LLVM::LLVMFunctionType::get(resultType, inputs), {noResults, noInputs}};
+    return {LLVM::LLVMFunctionType::get(resultType, inputs), {!noResults, !noInputs}};
 }
 
 /// Creates an auxiliary function with pointer-to-memref-descriptor-struct
@@ -149,38 +149,24 @@ static void wrapForExternalCallers(OpBuilder &rewriter, Location loc,
     auto type = funcOp.getFunctionType();
     auto [wrapperFuncType, result_inputs] =
         convertFunctionTypeCWrapper(rewriter, typeConverter, type);
-    auto [noResults, noInputs] = result_inputs;
-    funcOp->emitRemark() << wrapperFuncType;
-    funcOp->emitRemark() << result_inputs.first << result_inputs.second;
+    auto [hasResults, hasInputs] = result_inputs;
 
     auto wrapperFuncOp = rewriter.create<LLVM::LLVMFuncOp>(
         loc, llvm::formatv("_mlir_ciface_{0}", funcOp.getName()).str(), wrapperFuncType,
         LLVM::Linkage::External, /*dsoLocal*/ false,
         /*cconv*/ LLVM::CConv::C);
 
-    wrapperFuncOp->emitRemark() << "HELLO";
-
     SmallVector<Value, 8> args;
 
     /*
-    define void @_mlir_ciface_jit.f(ptr %0, ptr %1) {
-      %3 = load { ptr, ptr, i64 }, ptr %1, align 8
-      %4 = extractvalue { ptr, ptr, i64 } %3, 0
-      %5 = extractvalue { ptr, ptr, i64 } %3, 1
-      %6 = extractvalue { ptr, ptr, i64 } %3, 2
-      %7 = call { ptr, ptr, i64, [1 x i64], [1 x i64] } @jit.f(ptr %4, ptr %5, i64 %6)
-      store { ptr, ptr, i64, [1 x i64], [1 x i64] } %7, ptr %0, align 8
-      ret void
-    }
 
     DEF F(ARG0, ARG1):
       IF ARG1:
         STRUCT_OF_POINTERS_TO_MEMREFS = *ARG1
-        FOR EACH FIELD IN STRUCT_OF_POINTER_TO_MEMREFS:
-          MEMREF_PTR = EXTRACT_VALUE STRUCT_OF_POINTER_TO_MEMREFS FIELD
-          MEMREF = *MEMREF_PTR
-            FOR EACH FIELD IN MEMREF
-              SCALAR = EXTRACT_VALUE MEMREF FIELD
+        FOR EACH FIELD IN STRUCT_OF_MEMREFS:
+	  MEMREF = FIELD
+          FOR EACH FIELD IN MEMREF
+            SCALAR = EXTRACT_VALUE MEMREF FIELD
         RESULT = CALL(SCALAR_1, SCALAR_2, ... SCALAR_n)
       ELSE
         RESULT = CALL()
@@ -191,14 +177,12 @@ static void wrapForExternalCallers(OpBuilder &rewriter, Location loc,
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPointToStart(wrapperFuncOp.addEntryBlock());
 
-    if (!noInputs) {
+    if (hasInputs) {
         Value arg = wrapperFuncOp.getArgument(1);
         Value structOfMemrefs = rewriter.create<LLVM::LoadOp>(loc, arg);
         for (auto &en : llvm::enumerate(type.getInputs())) {
             Value memref = rewriter.create<LLVM::ExtractValueOp>(loc, structOfMemrefs, en.index());
-            wrapperFuncOp->emitRemark() << memref;
             if (auto memrefType = en.value().dyn_cast<MemRefType>()) {
-                wrapperFuncOp->emitRemark() << "Unpacking";
                 MemRefDescriptor::unpack(rewriter, loc, memref, memrefType, args);
                 continue;
             }
@@ -211,17 +195,13 @@ static void wrapForExternalCallers(OpBuilder &rewriter, Location loc,
 
     auto call = rewriter.create<LLVM::CallOp>(loc, newFuncOp, args);
 
-    if (!noResults) {
+    if (hasResults) {
         rewriter.create<LLVM::StoreOp>(loc, call.getResult(), wrapperFuncOp.getArgument(0));
         rewriter.create<LLVM::ReturnOp>(loc, ValueRange{});
     }
     else {
         rewriter.create<LLVM::ReturnOp>(loc, call.getResults());
     }
-
-    wrapperFuncOp->emitRemark() << "Goodbye?";
-
-    return;
 }
 
 /// Creates an auxiliary function with pointer-to-memref-descriptor-struct
