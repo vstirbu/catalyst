@@ -27,6 +27,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
+#include "Gradient/Analysis/GradientAnalysis.h"
 #include "Gradient/IR/GradientOps.h"
 #include "Gradient/Transforms/Passes.h"
 #include "Gradient/Transforms/Patterns.h"
@@ -64,6 +65,10 @@ struct GradientLoweringPass : public OperationPass<ModuleOp> {
     void runOnOperation() final
     {
         ModuleOp op = getOperation();
+
+        if (failed(runActivityAnalysis(op))) {
+            return signalPassFailure();
+        }
 
         RewritePatternSet gradientPatterns(&getContext());
         populateLoweringPatterns(gradientPatterns, lowerOnly);

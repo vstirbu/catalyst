@@ -16,6 +16,7 @@ set(LIBS
     ${dialect_libs}
     ${conversion_libs}
     MLIRGradient
+    MLIRGradientAnalysis
     GradientUtils
     MLIRQuantum
     QuantumUtils
