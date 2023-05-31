@@ -18,7 +18,10 @@
 #include "mlir/Support/LogicalResult.h"
 
 namespace catalyst {
+// TODO: maybe put this in the analysis manager
+mlir::LogicalResult runActivityAnalysis(mlir::Operation *top,
+                                        mlir::DenseSet<mlir::Value> &activeValues);
 
-mlir::LogicalResult runActivityAnalysis(mlir::Operation *top);
+void debugPrintValue(mlir::Value value);
 
 } // namespace catalyst

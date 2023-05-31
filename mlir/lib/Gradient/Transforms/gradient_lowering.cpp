@@ -66,7 +66,8 @@ struct GradientLoweringPass : public OperationPass<ModuleOp> {
     {
         ModuleOp op = getOperation();
 
-        if (failed(runActivityAnalysis(op))) {
+        DenseSet<Value> activeValues;
+        if (failed(runActivityAnalysis(op, activeValues))) {
             return signalPassFailure();
         }
 

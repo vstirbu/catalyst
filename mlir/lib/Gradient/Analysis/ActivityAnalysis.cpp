@@ -14,7 +14,7 @@
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/Debug.h"
 
 #include "Gradient/Analysis/GradientAnalysis.h"
 #include "Gradient/IR/GradientOps.h"
@@ -22,11 +22,17 @@
 
 #include <deque>
 
+#define DEBUG_TYPE "activity-analysis"
+#if LLVM_ENABLE_ABI_BREAKING_CHECKS
+#define ACTIVITY_DEBUG(X) LLVM_DEBUG(X)
+#else
+#define ACTIVITY_DEBUG(X)
+#endif // LLVM_ENABLE_ABI_BREAKING_CHECKS
+
 using namespace mlir;
 
 namespace catalyst {
 
-using llvm::errs;
 void topDownBFS(std::deque<Value> &frontier, DenseSet<Value> &visited)
 {
     auto queueIfNotVisited = [&](Value node) {
@@ -35,12 +41,13 @@ void topDownBFS(std::deque<Value> &frontier, DenseSet<Value> &visited)
             frontier.push_back(node);
         }
     };
+    visited.insert(frontier.begin(), frontier.end());
+
     while (!frontier.empty()) {
         Value v = frontier.front();
         frontier.pop_front();
         for (OpOperand &use : v.getUses()) {
             Operation *user = use.getOwner();
-            errs() << "user: " << *user << " at " << user->getLoc() << "\n";
             if (isRegionReturnLike(user)) {
                 Operation *parent = user->getParentOp();
                 if (auto functionLike = dyn_cast_or_null<FunctionOpInterface>(parent)) {
@@ -66,28 +73,101 @@ void topDownBFS(std::deque<Value> &frontier, DenseSet<Value> &visited)
     }
 }
 
-void bottomUpBFS(Operation *op) {}
-
-LogicalResult runActivityAnalysis(Operation *top)
+LogicalResult bottomUpBFS(std::deque<Value> &frontier, DenseSet<Value> &visited)
 {
-    DenseSet<StringAttr> visitedFuncs;
-    top->walk([&](gradient::GradOp gradOp) {
-        if (!visitedFuncs.contains(gradOp.getCalleeAttrName())) {
-            visitedFuncs.insert(gradOp.getCalleeAttrName());
-            auto funcOp =
-                SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(top, gradOp.getCalleeAttr());
-            const std::vector<size_t> &diffArgIndices =
-                compDiffArgIndices(gradOp.getDiffArgIndices());
-
-            std::deque<Value> frontier;
-            DenseSet<Value> topDownVisited;
-            for (size_t index : diffArgIndices) {
-                frontier.push_back(funcOp.getArgument(index));
-            }
-
-            topDownBFS(frontier, topDownVisited);
+    auto queueIfNotVisited = [&](Value node) {
+        if (!visited.contains(node)) {
+            visited.insert(node);
+            frontier.push_back(node);
         }
-    });
+    };
+    visited.insert(frontier.begin(), frontier.end());
+
+    while (!frontier.empty()) {
+        Value v = frontier.front();
+        frontier.pop_front();
+
+        if (Operation *parent = v.getDefiningOp()) {
+            if (auto branch = dyn_cast<RegionBranchOpInterface>(parent)) {
+                SmallVector<RegionSuccessor> successors;
+                // llvm::None gets *all* successor regions.
+                branch.getSuccessorRegions(llvm::None, successors);
+
+                for (auto successor : successors) {
+                    if (!successor.isParent()) {
+                        if (!successor.getSuccessor()->hasOneBlock()) {
+                            successor.getSuccessor()->getParentOp()->emitError()
+                                << "Activity analysis only supports structured control flow (each "
+                                   "region should have one block)";
+                            return failure();
+                        }
+
+                        Operation *terminator = successor.getSuccessor()->front().getTerminator();
+
+                        for (const auto &[operand, result] :
+                             llvm::zip(terminator->getOperands(), branch->getResults())) {
+                            if (result == v) {
+                                queueIfNotVisited(operand);
+                            }
+                        }
+                    }
+                }
+            }
+            else {
+                for (Value operand : parent->getOperands()) {
+                    queueIfNotVisited(operand);
+                }
+            }
+        }
+    }
+    return success();
+}
+
+LogicalResult runActivityAnalysis(Operation *top, DenseSet<Value> &activeValues)
+{
+    DenseSet<gradient::GradOp> gradOps;
+    // TODO(jacob): cache functions that we analyze, they might potentially call each other so it'd
+    // be good to reuse results
+    top->walk([&](gradient::GradOp gradOp) { gradOps.insert(gradOp); });
+
+    for (auto gradOp : gradOps) {
+        ACTIVITY_DEBUG(llvm::dbgs()
+                       << "Running activity analysis on '@" << gradOp.getCallee() << "'\n");
+
+        auto funcOp =
+            SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(top, gradOp.getCalleeAttr());
+        if (funcOp.isExternal()) {
+            // We can't analyze a function without seeing its body
+            continue;
+        }
+        const std::vector<size_t> &diffArgIndices = compDiffArgIndices(gradOp.getDiffArgIndices());
+
+        std::deque<Value> frontier;
+        DenseSet<Value> topDownVisited;
+        for (size_t index : diffArgIndices) {
+            frontier.push_back(funcOp.getArgument(index));
+        }
+        topDownBFS(frontier, topDownVisited);
+
+        frontier.clear();
+        DenseSet<Value> bottomUpVisited;
+        // TODO(jacob): Do we assume all outputs are active?
+        funcOp.walk([&](func::ReturnOp returnOp) {
+            frontier.insert(frontier.end(), returnOp.operand_begin(), returnOp.operand_end());
+        });
+        if (failed(bottomUpBFS(frontier, bottomUpVisited))) {
+            return failure();
+        }
+
+        // Active values are the intersection of top-down and bottom-up active values.
+        ACTIVITY_DEBUG(llvm::dbgs() << "Active values:\n");
+        for (Value value : topDownVisited) {
+            if (bottomUpVisited.contains(value)) {
+                ACTIVITY_DEBUG(debugPrintValue(value));
+                activeValues.insert(value);
+            }
+        }
+    }
 
     return success();
 }

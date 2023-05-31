@@ -1,5 +1,6 @@
 add_mlir_library(MLIRGradientAnalysis
     ActivityAnalysis.cpp
+    ActivityAnalysisDebugger.cpp
 
     ADDITIONAL_HEADER_DIRS
     ${PROJECT_SOURCE_DIR}/include/Gradient
