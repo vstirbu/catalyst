@@ -27,7 +27,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-#include "Gradient/Analysis/GradientAnalysis.h"
+#include "Gradient/Analysis/ActivityAnalysis.h"
 #include "Gradient/IR/GradientOps.h"
 #include "Gradient/Transforms/Passes.h"
 #include "Gradient/Transforms/Patterns.h"
@@ -66,8 +66,8 @@ struct GradientLoweringPass : public OperationPass<ModuleOp> {
     {
         ModuleOp op = getOperation();
 
-        DenseSet<Value> activeValues;
-        if (failed(runActivityAnalysis(op, activeValues))) {
+        auto &activityAnalysis = getAnalysis<ActivityAnalysis>();
+        if (!activityAnalysis.valid) {
             return signalPassFailure();
         }
 

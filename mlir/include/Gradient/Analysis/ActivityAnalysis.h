@@ -18,10 +18,23 @@
 #include "mlir/Support/LogicalResult.h"
 
 namespace catalyst {
-// TODO: maybe put this in the analysis manager
-mlir::LogicalResult runActivityAnalysis(mlir::Operation *top,
-                                        mlir::DenseSet<mlir::Value> &activeValues);
+namespace gradient {
+class GradOp;
+}
 
-void debugPrintValue(mlir::Value value);
+using ValueSet = mlir::DenseSet<mlir::Value>;
+
+struct ActivityAnalysis {
+    ActivityAnalysis(mlir::Operation *op);
+
+    // There isn't a way to communicate a failure from the analysis manager.
+    bool valid;
+    /// Store the set of active values for each grad invocation. The set of active values can be
+    /// different across grad invocations of the same function because different gradients can be
+    /// requested.
+    mlir::DenseMap<gradient::GradOp, ValueSet> activeValues;
+};
+
+void debugPrintValue(ValueSet value);
 
 } // namespace catalyst

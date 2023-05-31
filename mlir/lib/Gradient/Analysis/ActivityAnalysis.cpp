@@ -16,7 +16,7 @@
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "llvm/Support/Debug.h"
 
-#include "Gradient/Analysis/GradientAnalysis.h"
+#include "Gradient/Analysis/ActivityAnalysis.h"
 #include "Gradient/IR/GradientOps.h"
 #include "Gradient/Utils/CompDiffArgIndices.h"
 
@@ -123,22 +123,19 @@ LogicalResult bottomUpBFS(std::deque<Value> &frontier, DenseSet<Value> &visited)
     return success();
 }
 
-LogicalResult runActivityAnalysis(Operation *top, DenseSet<Value> &activeValues)
+ActivityAnalysis::ActivityAnalysis(Operation *moduleOp)
 {
-    DenseSet<gradient::GradOp> gradOps;
     // TODO(jacob): cache functions that we analyze, they might potentially call each other so it'd
     // be good to reuse results
-    top->walk([&](gradient::GradOp gradOp) { gradOps.insert(gradOp); });
-
-    for (auto gradOp : gradOps) {
+    WalkResult result = moduleOp->walk([&](gradient::GradOp gradOp) {
         ACTIVITY_DEBUG(llvm::dbgs()
                        << "Running activity analysis on '@" << gradOp.getCallee() << "'\n");
 
         auto funcOp =
-            SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(top, gradOp.getCalleeAttr());
+            SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(moduleOp, gradOp.getCalleeAttr());
         if (funcOp.isExternal()) {
             // We can't analyze a function without seeing its body
-            continue;
+            return WalkResult::advance();
         }
         const std::vector<size_t> &diffArgIndices = compDiffArgIndices(gradOp.getDiffArgIndices());
 
@@ -156,19 +153,22 @@ LogicalResult runActivityAnalysis(Operation *top, DenseSet<Value> &activeValues)
             frontier.insert(frontier.end(), returnOp.operand_begin(), returnOp.operand_end());
         });
         if (failed(bottomUpBFS(frontier, bottomUpVisited))) {
-            return failure();
+            return WalkResult::interrupt();
         }
 
+        ValueSet invokedActiveValues;
         // Active values are the intersection of top-down and bottom-up active values.
-        ACTIVITY_DEBUG(llvm::dbgs() << "Active values:\n");
         for (Value value : topDownVisited) {
             if (bottomUpVisited.contains(value)) {
-                ACTIVITY_DEBUG(debugPrintValue(value));
-                activeValues.insert(value);
+                invokedActiveValues.insert(value);
             }
         }
-    }
+        this->activeValues[gradOp] = invokedActiveValues;
 
-    return success();
+        ACTIVITY_DEBUG(debugPrintValue(invokedActiveValues));
+        return WalkResult::advance();
+    });
+
+    this->valid = !result.wasInterrupted();
 }
 } // namespace catalyst

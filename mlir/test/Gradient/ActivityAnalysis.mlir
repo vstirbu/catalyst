@@ -15,9 +15,9 @@
 // RUN: quantum-opt %s --lower-gradients --debug-only=activity-analysis -o /dev/null 2>&1 | FileCheck %s
 
 // CHECK-LABEL: Running activity analysis on '@noControlFlow'
-// CHECK-NEXT: Active values:
+// CHECK-NEXT: # of active values: 7
+// CHECK-DAG: "x"
 func.func @noControlFlow(%arg0: f64 {activity.id = "x"}) -> f64 {
-    // CHECK-DAG: "x"
     %c0_i64 = arith.constant 0 : i64
     quantum.device ["backend", "lightning.qubit"]
     %qreg = quantum.alloc(1) : !quantum.reg
@@ -42,8 +42,52 @@ func.func @noControlFlow(%arg0: f64 {activity.id = "x"}) -> f64 {
 // - loops: loop around, iter_arg, free variable
 // - both for and while loops
 // - if statements: both branches, only one branch
+// - requesting activity of more than one argument
 
 func.func @gradCallNoControlFlow(%arg0: f64) -> f64 {
     %0 = gradient.grad "ps" @noControlFlow(%arg0) : (f64) -> f64
     func.return %0 : f64
+}
+
+// ---
+
+// CHECK-LABEL: Running activity analysis on '@tensorTypes'
+// CHECK-NEXT: # of active values: 2
+// CHECK-DAG: "x"
+func.func @tensorTypes(%arg0: tensor<3xf64> {activity.id = "x"}) -> tensor<3xf64> {
+    // CHECK-DAG: "res"
+    %res = math.sin %arg0 {activity.id = "res"} : tensor<3xf64>
+    return %res : tensor<3xf64>
+}
+
+func.func @gradCallTensorTypes(%arg0: tensor<3xf64>) -> tensor<3x3xf64> {
+    %0 = gradient.grad "ps" @tensorTypes(%arg0) : (tensor<3xf64>) -> tensor<3x3xf64>
+    return %0 : tensor<3x3xf64>
+}
+
+// ---
+
+// CHECK-LABEL: Running activity analysis on '@secondArg'
+// CHECK-NEXT: # of active values: 1
+// CHECK-NEXT: "y"
+func.func @secondArg(%arg0: f64, %arg1: f64 {activity.id = "y"}) -> f64 {
+    return %arg1 : f64
+}
+
+func.func @gradCallSecondArg(%arg0: f64, %arg1: f64) -> f64 {
+    %0 = gradient.grad "ps" @secondArg(%arg0, %arg1) {diffArgIndices = dense<[1]> : tensor<1xindex>} : (f64, f64) -> f64
+    return %0 : f64
+}
+
+// ---
+
+// CHECK-LABEL: Running activity analysis on '@secondArgConst'
+// CHECK-NEXT: # of active values: 0
+func.func @secondArgConst(%arg0: f64, %arg1: f64 {activity.id = "y"}) -> f64 {
+    return %arg0 : f64
+}
+
+func.func @gradCallSecondArgConst(%arg0: f64, %arg1: f64) -> f64 {
+    %0 = gradient.grad "ps" @secondArgConst(%arg0, %arg1) {diffArgIndices = dense<[1]> : tensor<1xindex>} : (f64, f64) -> f64
+    return %0 : f64
 }

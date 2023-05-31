@@ -15,7 +15,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "llvm/Support/Debug.h"
 
-#include "Gradient/Analysis/GradientAnalysis.h"
+#include "Gradient/Analysis/ActivityAnalysis.h"
 
 using namespace mlir;
 
@@ -27,21 +27,25 @@ Attribute ensureAttribute(Attribute attr)
     return attr;
 }
 
-void debugPrintValue(Value value)
+void debugPrintValue(DenseSet<Value> activeValues)
 {
-    if (auto blockArg = dyn_cast<BlockArgument>(value)) {
-        Operation *op = blockArg.getParentRegion()->getParentOp();
-        if (auto funcOp = dyn_cast<func::FuncOp>(op)) {
-            llvm::dbgs() << ensureAttribute(funcOp.getArgAttr(blockArg.getArgNumber(), idKey))
-                         << "\n";
+    llvm::dbgs() << "# of active values: " << activeValues.size() << "\n";
+    for (Value value : activeValues) {
+        if (auto blockArg = dyn_cast<BlockArgument>(value)) {
+            Operation *op = blockArg.getParentRegion()->getParentOp();
+            if (auto funcOp = dyn_cast<func::FuncOp>(op)) {
+                llvm::dbgs() << ensureAttribute(funcOp.getArgAttr(blockArg.getArgNumber(), idKey))
+                             << "\n";
+            }
+            else {
+                llvm::dbgs() << "PRINT ERROR: unhandled BlockArgument parent " << op->getName()
+                             << "\n";
+            }
         }
         else {
-            llvm::dbgs() << "PRINT ERROR: unhandled BlockArgument parent " << op->getName() << "\n";
+            Operation *op = value.getDefiningOp();
+            llvm::dbgs() << ensureAttribute(op->getAttr(idKey)) << "\n";
         }
-    }
-    else {
-        Operation *op = value.getDefiningOp();
-        llvm::dbgs() << ensureAttribute(op->getAttr(idKey)) << "\n";
     }
 }
 } // namespace catalyst
