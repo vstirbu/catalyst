@@ -761,6 +761,31 @@ def StateOp : Measurement_Op<"state"> {
     let hasVerifier = 1;
 }
 
+def CtrlOp : Op<QuantumDialect, "ctrl", [SingleBlock, AttrSizedOperandSegments]> {
+    let summary = "Adds control of the enclosed operations";
+
+    let regions = (region SizedRegion<1>:$region);
+
+    let arguments = (ins
+      QuregType:$in_qreg,
+      Variadic<QubitType>:$ctrl_qubits,
+      Variadic<I1>:$values
+    );
+
+    let results = (outs
+      QuregType:$out_qreg,
+      Variadic<QubitType>:$out_ctrl
+    );
+
+    let assemblyFormat = [{
+        `(` $in_qreg `,` $ctrl_qubits `,` $values `)` attr-dict `:` type($out_qreg) `,` type($out_ctrl) $region
+    }];
+
+    /* FIXME: enable the verifier */
+    /* let hasVerifier = 1; */
+}
+
+
 def AdjointOp : Op<QuantumDialect, "adjoint", [SingleBlockImplicitTerminator<"YieldOp">]> {
     let summary = "Calculate the adjoint of the enclosed operations";
 
@@ -782,7 +807,7 @@ def AdjointOp : Op<QuantumDialect, "adjoint", [SingleBlockImplicitTerminator<"Yi
 }
 
 def YieldOp : Op<QuantumDialect, "yield",
-                [Pure, ReturnLike, Terminator, ParentOneOf<["AdjointOp"]>]> {
+                [Pure, ReturnLike, Terminator, ParentOneOf<["AdjointOp", "CtrlOp"]>]> {
     let summary = "Return results from quantum program regions";
 
     let arguments = (ins Variadic<AnyTypeOf<[QuregType]>>:$results);
