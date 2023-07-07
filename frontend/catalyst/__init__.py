@@ -41,6 +41,7 @@ from catalyst.pennylane_extensions import (
     measure,
     vjp,
     while_loop,
+    ctrl
 )
 from catalyst.utils.exceptions import CompileError
 
@@ -55,6 +56,7 @@ __all__ = (
     "vjp",
     "jvp",
     "adjoint",
+    "ctrl",
     "CompileError",
     "CompileOptions",
 )

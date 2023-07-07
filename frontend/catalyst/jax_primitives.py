@@ -34,6 +34,8 @@ from mlir_quantum.dialects.gradient import GradOp, JVPOp, VJPOp
 from mlir_quantum.dialects.quantum import (
     AdjointOp,
     AllocOp,
+    CtrlOp,
+    YieldOp as QYieldOp,
     ComputationalBasisOp,
     CountsOp,
     CustomOp,
@@ -203,6 +205,8 @@ vjp_p = core.Primitive("vjp")
 vjp_p.multiple_results = True
 adjoint_p = jax.core.Primitive("adjoint")
 adjoint_p.multiple_results = True
+ctrl_p = jax.core.Primitive("ctrl")
+ctrl_p.multiple_results = True
 
 #
 # func
@@ -1488,7 +1492,48 @@ def _qfor_lowering(
 
     return for_op_scf.results
 
+#
+# ctrl
+#
+@ctrl_p.def_impl
+def _ctrl_def_impl(ctx, *args, args_tree, jaxpr):  # pragma: no cover
+    raise NotImplementedError()
 
+
+@ctrl_p.def_abstract_eval
+def _ctrl_abstract(*args, args_tree, jaxpr):
+    return jaxpr.out_avals
+
+
+def _ctrl_lowering(
+    jax_ctx: mlir.LoweringRuleContext,
+    *args: Iterable[ir.Value],
+    args_tree: PyTreeDef,
+    jaxpr: core.ClosedJaxpr,
+) -> ir.Value:
+    consts, cargs, in_qreg, in_ctrl_qubits, in_ctrl_values = tree_unflatten(args_tree, args)
+
+    # Build an adjoint operation with a single-block region.
+    qreg_type = ir.OpaqueType.get("quantum", "reg", jax_ctx)
+    ctrl_qbit_types = [ir.OpaqueType.get("quantum", "bit", jax_ctx) for _ in range(len(in_ctrl_qubits))]
+    op = CtrlOp(qreg_type, ctrl_qbit_types, in_qreg, in_ctrl_qubits, in_ctrl_values)
+    ctrl_block = op.regions[0].blocks.append(*[qreg_type])
+    with ir.InsertionPoint(ctrl_block):
+        source_info_util.extend_name_stack("ctrl")
+        out, _ = mlir.jaxpr_subcomp(
+            jax_ctx.module_context.replace(
+                name_stack=jax_ctx.module_context.name_stack.extend("ctrl")
+            ),
+            jaxpr.jaxpr,
+            mlir.TokenSet(),
+            [mlir.ir_constants(c) for c in jaxpr.consts],
+            *([a] for a in chain(consts, ctrl_block.arguments, cargs)),
+            dim_var_values=jax_ctx.dim_var_values,
+        )
+
+        QYieldOp([a[0] for a in out])
+
+    return op.results
 #
 # adjoint
 #

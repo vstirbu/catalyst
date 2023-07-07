@@ -313,6 +313,16 @@ def trace_quantum_tape(
             args, args_tree = tree_flatten((op.consts, op.cargs, [qreg]))
             op_results = jprim.adjoint_p.bind(*args, args_tree=args_tree, jaxpr=op.body_jaxpr)
             qreg = op_results[0]
+        elif op.__class__.__name__ == "Control":
+            qreg = insert_to_qreg(qubit_states, qreg)
+            in_ctrl_qubits = get_qubits_from_wires(op.control, qubit_states, qreg)
+            in_ctrl_values = op.control_values
+            args, args_tree = tree_flatten((op.consts, op.cargs, qreg, in_ctrl_qubits, in_ctrl_values))
+            op_results = jprim.ctrl_p.bind(*args, args_tree=args_tree, jaxpr=op.body_jaxpr)
+            out_qreg, out_qubits = op_results
+            qubit_states, qreg = get_new_qubit_state_from_wires_and_qubits(
+                op.control, out_qubits, qubit_states, out_qreg
+            )
         else:
             op_args, op_wires = op_args
             qubits = get_qubits_from_wires(op_wires, qubit_states, qreg)

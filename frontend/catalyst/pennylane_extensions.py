@@ -1265,6 +1265,71 @@ def for_loop(lower_bound, upper_bound, step):
 
     return _for_loop
 
+class Ctrl(Operation):
+    """A minimal implementation of PennyLane operation, designed with a sole purpose of being
+    placed on the quantum tape"""
+
+    num_wires = AnyWires
+
+    def __init__(self, control, control_values, body_jaxpr, consts, cargs):
+        self.control = control
+        self.control_values = control_values
+        self.body_jaxpr = body_jaxpr
+        self.consts = list(consts)
+        self.cargs = list(cargs)
+        super().__init__(wires=Wires(Ctrl.num_wires))
+
+
+def ctrl(f: Union[Callable, Operator], control, control_values=None) -> Union[Callable, Operator]:
+
+    def _trace_quantum_tape(*args, _callee: Callable):
+        (qargs, cargs, ckwargs) = args
+        assert len(qargs) == 1
+        with qml.QueuingManager.stop_recording():
+            with JaxTape() as tape:
+                with tape.quantum_tape:
+                    out = _callee(*cargs, **ckwargs)
+            if len(tape.quantum_tape.measurements) > 0:
+                raise ValueError("Controlled operations must contain no measurements")
+            tape.set_return_val(out if not isinstance(out, Operation) else None)
+            new_quantum_tape = JaxTape.device.expand_fn(tape.quantum_tape)
+            tape.quantum_tape = new_quantum_tape
+            tape.quantum_tape.jax_tape = tape
+
+        has_tracer_return_values = False
+        qreg = qargs[0]
+        return_values, qreg, qubit_states = trace_quantum_tape(tape, qreg, has_tracer_return_values)
+        qreg = insert_to_qreg(qubit_states, qreg)
+        return qreg, return_values
+
+    def _make_ctrl(*args, _callee: Callable, **kwargs):
+        cargs_qargs, tree = tree_flatten(([jprim.Qreg()], args, kwargs))
+        cargs, _ = tree_flatten((args, kwargs))
+        cargs_qargs_aval = tuple(_abstractify(val) for val in cargs_qargs)
+        body, consts, _ = _initial_style_jaxpr(
+            partial(_trace_quantum_tape, _callee=_callee), tree, cargs_qargs_aval, "ctrl"
+        )
+        return Ctrl(control, control_values, body, consts, cargs)
+
+    if isinstance(f, Callable):
+
+        def _callable(*args, **kwargs):
+            return _make_ctrl(*args, _callee=f, **kwargs)
+
+        return _callable
+    elif isinstance(f, Operator):
+        QueuingManager.remove(f)
+
+        def _callee():
+            QueuingManager.append(f)
+
+        return _make_ctrl(_callee=_callee)
+    else:
+        raise ValueError(f"Expected a callable or a qml.Operator, not {f}")
+
+
+
+
 
 class MidCircuitMeasure(Operation):
     """Operation representing a mid-circuit measurement."""
