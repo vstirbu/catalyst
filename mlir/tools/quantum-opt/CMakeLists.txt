@@ -1,8 +1,10 @@
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
 set(LIBS
     ${dialect_libs}
     ${conversion_libs}
+    ${extension_libs}
     MLIROptLib
     MLIRCatalyst
     MLIRCatalystTransforms
@@ -13,20 +15,7 @@ set(LIBS
 
     MhloRegisterDialects
     StablehloRegister
-
-    # Taken from mlir-hlo/bindings/c/CMakeLists.txt:
-    # For AllMhLoPasses:
-    ChloPasses
-    MhloPasses
-    MhloToLhloConversion
-    MhloToArithmeticConversion
-    MhloToMemrefConversion
-    MhloToStandard
-    MhloToThloConversion
-    MhloToLinalg
-    MhloToStablehlo
-    MhloShapeOpsToStandard
-    StablehloToMhlo
+    ${ALL_MHLO_PASSES}
 )
 
 add_llvm_executable(quantum-opt quantum-opt.cpp)

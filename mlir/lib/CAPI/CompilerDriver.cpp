@@ -1,4 +1,4 @@
-// Copyright 2022-2023 Xanadu Quantum Technologies Inc.
+// Copyright 2023 Xanadu Quantum Technologies Inc.
 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -41,6 +41,7 @@ using namespace mlir;
 using namespace catalyst;
 
 namespace {
+/// Parse an MLIR module given in textual ASM representation.
 OwningOpRef<ModuleOp> parseSource(MLIRContext *ctx, const char *source)
 {
     auto moduleBuffer = llvm::MemoryBuffer::getMemBufferCopy(source, "jit source");
