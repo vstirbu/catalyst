@@ -1420,6 +1420,7 @@ class QJITDevice(qml.QubitDevice):
     operations = [
         "MidCircuitMeasure",
         "Cond",
+        "Ctrl",
         "WhileLoop",
         "ForLoop",
         "PauliX",

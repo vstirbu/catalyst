@@ -1502,7 +1502,9 @@ def _ctrl_def_impl(ctx, *args, args_tree, jaxpr):  # pragma: no cover
 
 @ctrl_p.def_abstract_eval
 def _ctrl_abstract(*args, args_tree, jaxpr):
-    return jaxpr.out_avals
+    aconsts, acargs, ain_qreg, ain_ctrl_qubits, ain_ctrl_values = tree_unflatten(args_tree, args)
+    assert len(ain_ctrl_qubits) == len(ain_ctrl_values)
+    return [AbstractQreg()] + [AbstractQbit() for _ in range(len(ain_ctrl_qubits))]
 
 
 def _ctrl_lowering(
@@ -1511,11 +1513,11 @@ def _ctrl_lowering(
     args_tree: PyTreeDef,
     jaxpr: core.ClosedJaxpr,
 ) -> ir.Value:
+    ctx = jax_ctx.module_context.context
     consts, cargs, in_qreg, in_ctrl_qubits, in_ctrl_values = tree_unflatten(args_tree, args)
 
-    # Build an adjoint operation with a single-block region.
-    qreg_type = ir.OpaqueType.get("quantum", "reg", jax_ctx)
-    ctrl_qbit_types = [ir.OpaqueType.get("quantum", "bit", jax_ctx) for _ in range(len(in_ctrl_qubits))]
+    qreg_type = ir.OpaqueType.get("quantum", "reg", ctx)
+    ctrl_qbit_types = [ir.OpaqueType.get("quantum", "bit", ctx) for _ in range(len(in_ctrl_qubits))]
     op = CtrlOp(qreg_type, ctrl_qbit_types, in_qreg, in_ctrl_qubits, in_ctrl_values)
     ctrl_block = op.regions[0].blocks.append(*[qreg_type])
     with ir.InsertionPoint(ctrl_block):
@@ -1533,6 +1535,7 @@ def _ctrl_lowering(
 
         QYieldOp([a[0] for a in out])
 
+    print(f"{op=}")
     return op.results
 #
 # adjoint
@@ -1625,6 +1628,7 @@ mlir.register_lowering(func_p, _func_lowering)
 mlir.register_lowering(jvp_p, _jvp_lowering)
 mlir.register_lowering(vjp_p, _vjp_lowering)
 mlir.register_lowering(adjoint_p, _adjoint_lowering)
+mlir.register_lowering(ctrl_p, _ctrl_lowering)
 
 
 def _scalar_abstractify(t):
