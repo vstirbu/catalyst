@@ -20,15 +20,18 @@ from catalyst._configuration import INSTALLED
 from catalyst._version import __version__
 
 if not INSTALLED:
-    import os
+    import pathlib
+    import sys
 
-    default_bindings_path = os.path.join(
-        os.path.dirname(__file__), "../../mlir/build/python_packages/quantum"
-    )
-    if os.path.exists(default_bindings_path):  # pragma: no cover
-        import sys
+    default_build_path = pathlib.Path(__file__).parents[2] / "mlir" / "build"
+    default_bindings_path = default_build_path / "python_packages" / "quantum"
+    driver_bindings_path = default_build_path / "python"
 
-        sys.path.insert(0, default_bindings_path)
+    if default_bindings_path.exists():  # pragma: no cover
+        sys.path.insert(0, str(default_bindings_path))
+
+    if driver_bindings_path.exists():
+        sys.path.insert(0, str(driver_bindings_path))
 
 # pylint: disable=wrong-import-position
 from catalyst.compilation_pipelines import QJIT, CompileOptions, qjit

@@ -61,6 +61,9 @@ declare_mlir_python_extension(QuantumPythonSources.Extension
     QuantumCAPI
 )
 
+pybind11_add_module(example_python driver/example.cpp)
+target_link_libraries(example_python PRIVATE LLVMSupport LLVMEnzyme-${LLVM_VERSION_MAJOR})
+
 ################################################################################
 # Common CAPI
 ################################################################################

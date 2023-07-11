@@ -86,12 +86,12 @@ void catalyst::registerLLVMTranslations(DialectRegistry &registry)
 }
 
 // Defined in Enzyme/Enzyme.h
-llvm::ModulePass *createEnzymePass(bool PostOpt = false);
+// llvm::ModulePass *createEnzymePass(bool PostOpt = false);
 
 LogicalResult catalyst::runEnzyme(std::unique_ptr<llvm::Module> &llvmModule)
 {
-    llvm::errs() << "creating enzyme pass\n";
-    llvm::ModulePass *pass = createEnzymePass(/*PostOpt=*/false);
+    // llvm::errs() << "creating enzyme pass\n";
+    // llvm::ModulePass *pass = createEnzymePass(/*PostOpt=*/false);
     return failure();
 }
 
