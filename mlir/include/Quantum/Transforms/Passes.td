@@ -63,4 +63,11 @@ def AdjointLoweringPass : Pass<"adjoint-lowering"> {
     let constructor = "catalyst::createAdjointLoweringPass()";
 }
 
+def AnnotateFunctionPass : Pass<"annotate-function"> {
+    let summary = "Annotate functions that contain a measurement operation.";
+
+    let constructor = "catalyst::createAnnotateFunctionPass()";
+}
+
+
 #endif // QUANTUM_PASSES
