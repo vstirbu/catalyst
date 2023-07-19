@@ -310,6 +310,7 @@ class LLVMIRToObjectFile(PassPipeline):
     _default_flags = [
         "--filetype=obj",
         "--relocation-model=pic",
+        "--regalloc=fast",
     ]
 
     @staticmethod
