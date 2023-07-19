@@ -94,8 +94,9 @@ def BackpropOp : Gradient_Op<"backprop", [AttrSizedOperandSegments]> {
     let arguments = (ins
         FlatSymbolRefAttr:$callee,
         Variadic<AnyType>:$args,
-        Variadic<AnyType>:$quantum_jacobian,
-        Variadic<AnyMemRef>:$data_in,
+        Variadic<AnyType>:$outputs,
+        Variadic<AnyMemRef>:$arg_shadows,
+        Variadic<AnyMemRef>:$out_shadows,
         OptionalAttr<AnyIntElementsAttr>:$diffArgIndices
     );
 
@@ -108,8 +109,9 @@ def BackpropOp : Gradient_Op<"backprop", [AttrSizedOperandSegments]> {
 
     let assemblyFormat = [{
         $callee `(` $args `)`
-        `qjacobian` `(` $quantum_jacobian`:` type($quantum_jacobian) `)`
-        ( `in` `(` $data_in^ `:` type($data_in) `)` )?
+        `outs` `(` $outputs `:` type($outputs) `)`
+        ( `arg_shadows` `(` $arg_shadows^ `:` type($arg_shadows) `)` )?
+        ( `out_shadows` `(` $out_shadows^ `:` type($out_shadows) `)` )?
         attr-dict `:` functional-type($args, results)
     }];
 }

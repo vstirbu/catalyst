@@ -15,8 +15,10 @@
 #include "iostream"
 #include "llvm/Support/raw_ostream.h"
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 #include "Gradient/IR/GradientOps.h"
@@ -62,23 +64,29 @@ class BufferizeBackpropOp : public OpConversionPattern<BackpropOp> {
                                   ConversionPatternRewriter &rewriter) const override
     {
         SmallVector<Type> resTypes;
-        if (failed(getTypeConverter()->convertTypes(op.getResultTypes(), resTypes)))
+        SmallVector<Type> outTypes;
+        if (failed(getTypeConverter()->convertTypes(op.getResultTypes(), resTypes))) {
             return failure();
-
-        Location loc = op.getLoc();
-        ValueRange results = op.getResults();
-        SmallVector<Value> memrefValues;
-        for (auto [resType, result] : zip(resTypes, results)) {
-            MemRefType memrefType = resType.cast<MemRefType>();
-            Value memrefValue;
-            memrefValue = rewriter.create<memref::AllocOp>(loc, memrefType);
-            memrefValues.push_back(memrefValue);
+        }
+        if (failed(getTypeConverter()->convertTypes(op.getOutputs().getTypes(), outTypes))) {
+            return failure();
         }
 
-        DenseIntElementsAttr diffArgIndicesAttr = adaptor.getDiffArgIndices().value_or(nullptr);
-        rewriter.create<BackpropOp>(loc, TypeRange{}, adaptor.getCalleeAttr(), adaptor.getArgs(),
-                                    adaptor.getQuantumJacobian(), memrefValues, diffArgIndicesAttr);
-        rewriter.replaceOp(op, memrefValues);
+        Location loc = op.getLoc();
+        SmallVector<Value> argShadows;
+        SmallVector<Value> outShadows;
+        for (Type resType : resTypes) {
+            argShadows.push_back(rewriter.create<memref::AllocOp>(loc, cast<MemRefType>(resType)));
+        }
+
+        for (Type outType : outTypes) {
+            outShadows.push_back(rewriter.create<memref::AllocOp>(loc, cast<MemRefType>(outType)));
+        }
+
+        rewriter.create<BackpropOp>(loc, TypeRange{}, op.getCalleeAttr(), adaptor.getArgs(),
+                                    adaptor.getOutputs(), argShadows, outShadows,
+                                    op.getDiffArgIndicesAttr());
+        rewriter.replaceOp(op, argShadows);
         return success();
     }
 };
