@@ -142,6 +142,10 @@ struct AdjointSingleOpRewritePattern : public mlir::OpRewritePattern<AdjointOp> 
                      * and conditionals should not be a problem. Stateful loops would probably
                      * require some kind of classical unrolling.
                      */
+                    /* TODO: We must provide a compatibility with CtrlOp. A good way to do it is
+                     * probably to issue a Control of Adjoint in response to the Adjoint of Control
+                     * and thus rely on MLIR recursive pattern application.
+                     */
                 }
             }
         };

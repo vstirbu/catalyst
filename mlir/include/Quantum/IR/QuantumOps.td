@@ -198,18 +198,18 @@ class Gate_Op<string mnemonic, list<Trait> traits = []> :
         void setAdjointFlag(bool adjoint) {
             setAdjoint(adjoint);
         };
-        std::vector<mlir::Value> getCtrlArgs() {
+        mlir::OperandRange getCtrlArgs() {
           /* FIXME */
-            return {};
+            return mlir::OperandRange(getOperands().end(), getOperands().end());
         };
-        void setCtrlArgs(const std::vector<mlir::Value> &ctrl) {
+        void setCtrlArgs(mlir::OperandRange range) {
           /* FIXME */
         };
-        std::vector<mlir::Value> getCtrlValues() {
+        mlir::OperandRange getCtrlValues() {
           /* FIXME */
-            return {};
+            return mlir::OperandRange(getOperands().end(), getOperands().end());
         };
-        void setCtrlValues(const std::vector<mlir::Value> &ctrl) {
+        void setCtrlValues(mlir::OperandRange ctrl) {
           /* FIXME */
         };
     }];
