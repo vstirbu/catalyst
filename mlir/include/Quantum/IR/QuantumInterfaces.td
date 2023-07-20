@@ -42,6 +42,14 @@ def QuantumGate : OpInterface<"QuantumGate"> {
         InterfaceMethod<
             "Set adjoint flag.",
             "void", "setAdjointFlag", (ins "bool":$adjoint)
+        >,
+        InterfaceMethod<
+            "Return quantum control arguments.",
+            "std::vector<mlir::Value>", "getCtrlArgs"
+        >,
+        InterfaceMethod<
+            "Set quantum control arguments.",
+            "void", "setCtrlArgs", (ins "std::vector<mlir::Value>":$ctrl)
         >
     ];
 

@@ -198,12 +198,20 @@ class Gate_Op<string mnemonic, list<Trait> traits = []> :
         void setAdjointFlag(bool adjoint) {
             setAdjoint(adjoint);
         };
+        std::vector<mlir::Value> getCtrlArgs() {
+          /* FIXME */
+            return {};
+        };
+        void setCtrlArgs(const std::vector<mlir::Value> &ctrl) {
+          /* FIXME */
+        };
     }];
 
     let extraClassDeclaration = extraBaseClassDeclaration;
 }
 
-def CustomOp : Gate_Op<"custom", [NoMemoryEffect, AttrSizedOperandSegments, DifferentiableGate]> {
+def CustomOp : Gate_Op<"custom", [NoMemoryEffect, AttrSizedOperandSegments,
+                                  AttrSizedResultSegments, DifferentiableGate]> {
     let summary = "A generic quantum gate on n qubits with m floating point parameters.";
     let description = [{
     }];
@@ -212,15 +220,17 @@ def CustomOp : Gate_Op<"custom", [NoMemoryEffect, AttrSizedOperandSegments, Diff
         Variadic<F64>:$params,
         Variadic<QubitType>:$in_qubits,
         StrAttr:$gate_name,
-        OptionalAttr<UnitAttr>:$adjoint
+        OptionalAttr<UnitAttr>:$adjoint,
+        Variadic<QubitType>:$in_ctrl_qubits
     );
 
     let results = (outs
-        Variadic<QubitType>:$out_qubits
+        Variadic<QubitType>:$out_qubits,
+        Variadic<QubitType>:$out_ctrl_qubits
     );
 
     let assemblyFormat = [{
-        $gate_name `(` $params `)` $in_qubits attr-dict `:` type($out_qubits)
+        $gate_name `(` $params `)` $in_qubits ( `ctrl` $in_ctrl_qubits^ )? attr-dict `:` type($out_qubits) (`,` type($out_ctrl_qubits)^ )?
     }];
 
     let extraClassDeclaration = extraBaseClassDeclaration # [{
