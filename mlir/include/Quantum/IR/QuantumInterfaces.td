@@ -50,6 +50,14 @@ def QuantumGate : OpInterface<"QuantumGate"> {
         InterfaceMethod<
             "Set quantum control arguments.",
             "void", "setCtrlArgs", (ins "std::vector<mlir::Value>":$ctrl)
+        >,
+        InterfaceMethod<
+            "Get quantum control values.",
+            "std::vector<mlir::Value>", "getCtrlValues"
+        >,
+        InterfaceMethod<
+            "Set quantum control values.",
+            "void", "setCtrlValues", (ins "std::vector<mlir::Value>":$values)
         >
     ];
 

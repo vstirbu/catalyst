@@ -205,6 +205,13 @@ class Gate_Op<string mnemonic, list<Trait> traits = []> :
         void setCtrlArgs(const std::vector<mlir::Value> &ctrl) {
           /* FIXME */
         };
+        std::vector<mlir::Value> getCtrlValues() {
+          /* FIXME */
+            return {};
+        };
+        void setCtrlValues(const std::vector<mlir::Value> &ctrl) {
+          /* FIXME */
+        };
     }];
 
     let extraClassDeclaration = extraBaseClassDeclaration;
@@ -221,7 +228,8 @@ def CustomOp : Gate_Op<"custom", [NoMemoryEffect, AttrSizedOperandSegments,
         Variadic<QubitType>:$in_qubits,
         StrAttr:$gate_name,
         OptionalAttr<UnitAttr>:$adjoint,
-        Variadic<QubitType>:$in_ctrl_qubits
+        Variadic<QubitType>:$in_ctrl_qubits,
+        Variadic<I1>:$in_ctrl_values
     );
 
     let results = (outs
@@ -230,7 +238,7 @@ def CustomOp : Gate_Op<"custom", [NoMemoryEffect, AttrSizedOperandSegments,
     );
 
     let assemblyFormat = [{
-        $gate_name `(` $params `)` $in_qubits ( `ctrl` $in_ctrl_qubits^ )? attr-dict `:` type($out_qubits) (`,` type($out_ctrl_qubits)^ )?
+        $gate_name `(` $params `)` $in_qubits ( `ctrl` $in_ctrl_qubits^ )?  ( `ctrlval` $in_ctrl_values^ )? attr-dict `:` type($out_qubits) (`,` type($out_ctrl_qubits)^ )?
     }];
 
     let extraClassDeclaration = extraBaseClassDeclaration # [{
@@ -779,7 +787,7 @@ def CtrlOp : Op<QuantumDialect, "ctrl", [SingleBlock, AttrSizedOperandSegments]>
     let arguments = (ins
       QuregType:$in_qreg,
       Variadic<QubitType>:$ctrl_qubits,
-      Variadic<I1>:$values
+      Variadic<I1>:$ctrl_values
     );
 
     let results = (outs
@@ -788,7 +796,7 @@ def CtrlOp : Op<QuantumDialect, "ctrl", [SingleBlock, AttrSizedOperandSegments]>
     );
 
     let assemblyFormat = [{
-        `(` $in_qreg `,` $ctrl_qubits `,` $values `)` attr-dict `:` type($out_qreg) `,` type($out_ctrl) $region
+        `(` $in_qreg `,` $ctrl_qubits `,` $ctrl_values `)` attr-dict `:` type($out_qreg) `,` type($out_ctrl) $region
     }];
 
     /* FIXME: enable the verifier */
