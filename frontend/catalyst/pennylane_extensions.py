@@ -1282,32 +1282,15 @@ class Ctrl(Operation):
 
 def ctrl(f: Union[Callable, Operator], control, control_values=None) -> Union[Callable, Operator]:
 
-    def _trace_quantum_tape(*args, _callee: Callable):
-        (qargs, cargs, ckwargs) = args
-        assert len(qargs) == 1
-        with qml.QueuingManager.stop_recording():
-            with JaxTape() as tape:
-                with tape.quantum_tape:
-                    out = _callee(*cargs, **ckwargs)
-            if len(tape.quantum_tape.measurements) > 0:
-                raise ValueError("Controlled operations must contain no measurements")
-            tape.set_return_val(out if not isinstance(out, Operation) else None)
-            new_quantum_tape = JaxTape.device.expand_fn(tape.quantum_tape)
-            tape.quantum_tape = new_quantum_tape
-            tape.quantum_tape.jax_tape = tape
-
-        has_tracer_return_values = False
-        qreg = qargs[0]
-        return_values, qreg, qubit_states = trace_quantum_tape(tape, qreg, has_tracer_return_values)
-        qreg = insert_to_qreg(qubit_states, qreg)
-        return qreg, return_values
-
     def _make_ctrl(*args, _callee: Callable, **kwargs):
-        cargs_qargs, tree = tree_flatten(([jprim.Qreg()], args, kwargs))
+        cargs_qargs, tree = tree_flatten((args, kwargs, [jprim.Qreg()]))
         cargs, _ = tree_flatten((args, kwargs))
         cargs_qargs_aval = tuple(_abstractify(val) for val in cargs_qargs)
         body, consts, _ = _initial_style_jaxpr(
-            partial(_trace_quantum_tape, _callee=_callee), tree, cargs_qargs_aval, "ctrl"
+            partial(_trace_quantum_tape, _callee=_callee, _allow_quantum_measurements=False),
+            tree,
+            cargs_qargs_aval,
+            "ctrl"
         )
         return Ctrl(control, control_values, body, consts, cargs)
 

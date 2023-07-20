@@ -1529,7 +1529,7 @@ def _ctrl_lowering(
             jaxpr.jaxpr,
             mlir.TokenSet(),
             [mlir.ir_constants(c) for c in jaxpr.consts],
-            *([a] for a in chain(consts, ctrl_block.arguments, cargs)),
+            *([a] for a in chain(consts, cargs, ctrl_block.arguments)),
             dim_var_values=jax_ctx.dim_var_values,
         )
 
