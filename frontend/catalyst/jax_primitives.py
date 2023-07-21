@@ -705,7 +705,13 @@ def _qinst_lowering(
         float_param = float_params[0]
         return MultiRZOp([qubit.type for qubit in qubits], float_param, qubits).results
 
-    return CustomOp([qubit.type for qubit in qubits], float_params, qubits, name_attr).results
+    return CustomOp(out_qubits=[qubit.type for qubit in qubits],
+                    out_ctrl_qubits=[],
+                    params=float_params,
+                    in_qubits=qubits,
+                    gate_name=name_attr,
+                    in_ctrl_qubits=[],
+                    in_ctrl_values=[]).results
 
 
 #
@@ -1518,7 +1524,15 @@ def _ctrl_lowering(
 
     qreg_type = ir.OpaqueType.get("quantum", "reg", ctx)
     ctrl_qbit_types = [ir.OpaqueType.get("quantum", "bit", ctx) for _ in range(len(in_ctrl_qubits))]
-    op = CtrlOp(qreg_type, ctrl_qbit_types, in_qreg, in_ctrl_qubits, in_ctrl_values)
+    # print([v.type for v in in_ctrl_values])
+
+    in_ctrl_values2 = []
+    for v in in_ctrl_values:
+        e = TensorExtractOp(ir.IntegerType.get_signless(1), v, []).result
+        in_ctrl_values2.append(e)
+    # print([v.type for v in in_ctrl_values2])
+
+    op = CtrlOp(qreg_type, ctrl_qbit_types, in_qreg, in_ctrl_qubits, in_ctrl_values2)
     ctrl_block = op.regions[0].blocks.append(*[qreg_type])
     with ir.InsertionPoint(ctrl_block):
         source_info_util.extend_name_stack("ctrl")
@@ -1535,7 +1549,7 @@ def _ctrl_lowering(
 
         QYieldOp([a[0] for a in out])
 
-    print(f"{op=}")
+    # print(f"{op=}")
     return op.results
 #
 # adjoint
