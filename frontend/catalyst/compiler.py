@@ -478,6 +478,36 @@ class Compiler:
         # in order to avoid being garbage collected
         self.workspace = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
 
+    def run_from_ir(self, ir: str, module_name: str, options: CompileOptions):
+        pipelines = [
+            MLIRToLLVMDialect,
+            LLVMDialectToLLVMIR,
+            PreEnzymeOpt,
+            Enzyme,
+            LLVMIRToObjectFile,
+            CompilerDriver,
+        ]
+
+        if options.keep_intermediate:
+            parent_dir = os.getcwd()
+            path = os.path.join(parent_dir, module_name)
+            os.makedirs(path, exist_ok=True)
+            workspace_name = os.path.abspath(path)
+        else:
+            workspace_name = self.workspace.name
+
+        filename = f"{workspace_name}/{module_name}.txt"
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(ir)
+
+        self.pass_pipeline_output = {}
+        for pipeline in pipelines:
+            output = pipeline.run(filename, options=options)
+            self.pass_pipeline_output[pipeline.__name__] = output
+            filename = os.path.abspath(output)
+
+        return filename
+
     def run(self, mlir_module, options):
         """Compile an MLIR module to a shared object.
 
