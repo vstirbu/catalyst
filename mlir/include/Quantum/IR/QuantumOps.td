@@ -238,7 +238,7 @@ def CustomOp : Gate_Op<"custom", [NoMemoryEffect, AttrSizedOperandSegments,
     );
 
     let assemblyFormat = [{
-        $gate_name `(` $params `)` $in_qubits ( `ctrl` $in_ctrl_qubits^ )?  ( `ctrlval` $in_ctrl_values^ )? attr-dict `:` type($out_qubits) (`,` type($out_ctrl_qubits)^ )?
+        $gate_name `(` $params `)` $in_qubits attr-dict ( `ctrl` $in_ctrl_qubits^ )?  ( `ctrlval` $in_ctrl_values^ )? `:` type($out_qubits) (`ctrl` type($out_ctrl_qubits)^ )?
     }];
 
     let extraClassDeclaration = extraBaseClassDeclaration # [{

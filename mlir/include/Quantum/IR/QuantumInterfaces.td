@@ -68,7 +68,10 @@ def QuantumGate : OpInterface<"QuantumGate"> {
             return $_op->emitOpError("must have at least 1 qubit");
 
         if (gate.getQubitOperands().size() != gate.getQubitResults().size())
-            return $_op->emitOpError("number of qubits in input and output must be the same");
+            return $_op->emitError() <<
+                "'" << $_op->getName() << "' op " <<
+                "number of qubits in input (" << gate.getQubitOperands().size() << ") " <<
+                "and output (" << gate.getQubitResults().size() << ") must be the same";
 
         return mlir::success();
     }];
