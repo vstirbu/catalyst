@@ -36,7 +36,11 @@ using namespace catalyst::quantum;
 
 namespace {
 
-CustomOp cloneWith(PatternRewriter &rewriter, CustomOp op, IRMapping &mapper, OperandRange ctrlQubits, OperandRange ctrlValues)
+CustomOp cloneWith(
+    CustomOp op,
+    IRMapping &mapper,
+    OperandRange ctrlQubits,
+    OperandRange ctrlValues)
 {
     std::vector<Value> inQubits;
     std::vector<Value> inParams;
@@ -47,37 +51,34 @@ CustomOp cloneWith(PatternRewriter &rewriter, CustomOp op, IRMapping &mapper, Op
     {
         for (auto o: op.getInQubits())
             inQubits.push_back(mapper.lookupOrDefault(o));
-        for (auto o: ctrlQubits)
-            inCtrlQubits.push_back(mapper.lookupOrDefault(o));
-        for (auto o: ctrlValues)
-            inCtrlValues.push_back(mapper.lookupOrDefault(o));
         for (auto o: op.getParams())
             inParams.push_back(mapper.lookupOrDefault(o));
         for (auto o: op.getOutQubits())
             resultTypes.push_back(o.getType());
+
+        // FIXME: figure out how to use llvm::concat for joining iterators
+        for (auto o: op.getInCtrlValues())
+            inCtrlValues.push_back(mapper.lookupOrDefault(o));
+        for (auto o: ctrlValues)
+            inCtrlValues.push_back(mapper.lookupOrDefault(o));
+
+        for (auto o: op.getInCtrlQubits())
+            inCtrlQubits.push_back(mapper.lookupOrDefault(o));
+        for (auto o: ctrlQubits)
+            inCtrlQubits.push_back(mapper.lookupOrDefault(o));
+
+        // FIXME: figure out how to use llvm::concat for joining iterators
+        for (auto o: op.getInCtrlQubits())
+            controlTypes.push_back(o.getType());
         for (auto o: ctrlQubits)
             controlTypes.push_back(o.getType());
     }
 
-    LLVM_DEBUG(dbgs() << "nInQubits: " << inQubits.size() << "\n");
-    LLVM_DEBUG(dbgs() << "nInCtrlQubits: " << inCtrlQubits.size() << "\n");
-    LLVM_DEBUG(dbgs() << "nOutQubits: " << resultTypes.size() << "\n");
-    LLVM_DEBUG(dbgs() << "nOutCtrlQubits: " << controlTypes.size() << "\n");
-
-    /* OperationState state(op.getLoc(), op->getName()); */
-    /* OpBuilder builder(op->getContext()); */
-    auto newOp = rewriter.create<CustomOp>(op.getLoc(), resultTypes, controlTypes, inParams, inQubits,
+    OpBuilder builder(op->getContext());
+    OperationState state(op->getLoc(), op->getName());
+    CustomOp::build(builder, state, resultTypes, controlTypes, inParams, inQubits,
         op.getGateName(), op.getAdjointAttr(), inCtrlQubits, inCtrlValues);
-    /* CustomOp::build(builder, state, resultTypes, controlTypes, inParams, inQubits, */
-    /*     op.getGateName(), op.getAdjointAttr(), inCtrlQubits, inCtrlValues); */
-    /* CustomOp newOp = dyn_cast<CustomOp>(builder.create(state)); */
-
-    /* mapper.map(op, newOp); */
-    LLVM_DEBUG(dbgs() << "real outQubits: " << newOp.getOutQubits().size() << "\n");
-    LLVM_DEBUG(dbgs() << "real ctrlQubits: " << newOp.getOutCtrlQubits().size() << "\n");
-    LLVM_DEBUG(dbgs() << *newOp << "\n");
-    LLVM_DEBUG(dbgs() << newOp.verify().succeeded() << "\n");
-    LLVM_DEBUG(dbgs() << newOp->getAttrs().size() << "\n");
+    CustomOp newOp = dyn_cast<CustomOp>(builder.create(state));
 
     for (const auto &[qN, qO] : zip(newOp.getOutQubits(), op.getOutQubits()))
         mapper.map(qO, qN);
@@ -109,8 +110,9 @@ struct QControlSingleOpRewritePattern : public mlir::OpRewritePattern<CtrlOp> {
                         outputs.push_back(mapping.lookup(v));
                 }
                 else if (CustomOp custom = dyn_cast<CustomOp>(i)) {
-                    cloneWith(rewriter, custom, mapping, ctrl.getCtrlQubits(), ctrl.getCtrlValues());
-                    /* rewriter.insert(cloneWith(rewriter, custom, mapping, ctrl.getCtrlQubits(), ctrl.getCtrlValues())); */
+                    rewriter.insert(cloneWith(custom, mapping,
+                                              ctrl.getCtrlQubits(),
+                                              ctrl.getCtrlValues()));
                 }
                 /* else if (QuantumGate gate = dyn_cast<QuantumGate>(i)) { */
                 /*     QuantumGate clone = dyn_cast<QuantumGate>(gate->clone(mapping)); */
@@ -139,7 +141,12 @@ struct QControlSingleOpRewritePattern : public mlir::OpRewritePattern<CtrlOp> {
 namespace catalyst {
 namespace quantum {
 
-void populateQControlPatterns(RewritePatternSet &patterns)
+void populateQControlLoweringPatterns(RewritePatternSet &patterns)
+{
+    patterns.add<QControlSingleOpRewritePattern>(patterns.getContext(), 1);
+}
+
+void populateQControlSymsubstPatterns(RewritePatternSet &patterns)
 {
     patterns.add<QControlSingleOpRewritePattern>(patterns.getContext(), 1);
 }

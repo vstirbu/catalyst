@@ -69,4 +69,10 @@ def QControlLoweringPass : Pass<"qcontrol-lowering"> {
     let constructor = "catalyst::createQControlLoweringPass()";
 }
 
+def QControlSymsubstPass : Pass<"qcontrol-symsubst"> {
+    let summary = "Makes a symbolic name substitutions for controlled gates.";
+
+    let constructor = "catalyst::createQControlSymsubstPass()";
+}
+
 #endif // QUANTUM_PASSES

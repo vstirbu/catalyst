@@ -39,6 +39,7 @@ int main(int argc, char **argv)
     mlir::registerPass(catalyst::createCopyGlobalMemRefPass);
     mlir::registerPass(catalyst::createAdjointLoweringPass);
     mlir::registerPass(catalyst::createQControlLoweringPass);
+    mlir::registerPass(catalyst::createQControlSymsubstPass);
 
     mlir::DialectRegistry registry;
     mlir::registerAllDialects(registry);

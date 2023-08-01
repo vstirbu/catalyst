@@ -242,6 +242,21 @@ def CustomOp : Gate_Op<"custom", [NoMemoryEffect, AttrSizedOperandSegments,
     }];
 
     let extraClassDeclaration = extraBaseClassDeclaration # [{
+        /* FIXME: move to interface implementation */
+        mlir::ValueRange getCtrlValueOperands() {
+            return getInCtrlValues();
+        }
+
+        /* FIXME: move to interface implementation */
+        mlir::ValueRange getCtrlQubitOperands() {
+            return getInCtrlQubits();
+        }
+
+        /* FIXME: move to interface implementation */
+        mlir::ValueRange getCtrlQubitResults() {
+            return getOutCtrlQubits();
+        }
+
         mlir::ValueRange getDiffParams() {
             return getParams();
         }
@@ -273,6 +288,18 @@ def MultiRZOp : Gate_Op<"multirz", [NoMemoryEffect, DifferentiableGate]> {
     }];
 
     let extraClassDeclaration = extraBaseClassDeclaration # [{
+        mlir::ValueRange getCtrlValueOperands() {
+            return {};
+        }
+
+        mlir::ValueRange getCtrlQubitOperands() {
+            return {};
+        }
+
+        mlir::ValueRange getCtrlQubitResults() {
+            return {};
+        }
+
         mlir::ValueRange getDiffParams() {
             return getODSOperands(0);
         }
@@ -304,6 +331,20 @@ def QubitUnitaryOp : Gate_Op<"unitary", [NoMemoryEffect]> {
 
     let assemblyFormat = [{
         `(` $matrix `:` type($matrix) `)` $in_qubits attr-dict `:` type($out_qubits)
+    }];
+
+    let extraClassDeclaration = extraBaseClassDeclaration # [{
+        mlir::ValueRange getCtrlValueOperands() {
+            return {};
+        }
+
+        mlir::ValueRange getCtrlQubitOperands() {
+            return {};
+        }
+
+        mlir::ValueRange getCtrlQubitResults() {
+            return {};
+        }
     }];
 
     let hasVerifier = 1;

@@ -246,6 +246,8 @@ struct CustomOpPattern : public OpConversionPattern<CustomOp> {
         Location loc = op.getLoc();
         MLIRContext *ctx = getContext();
 
+        assert(op.getCtrlQubitOperands().size() == 0 && "can not lower controlled operation");
+
         SmallVector<Type> argTypes(adaptor.getOperands().getTypes().begin(),
                                    adaptor.getOperands().getTypes().end());
         argTypes.insert(argTypes.end(), IntegerType::get(ctx, 1));

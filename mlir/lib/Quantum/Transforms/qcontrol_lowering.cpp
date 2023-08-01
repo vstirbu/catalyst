@@ -43,6 +43,7 @@ namespace catalyst {
 namespace quantum {
 
 #define GEN_PASS_DEF_QCONTROLLOWERINGPASS
+#define GEN_PASS_DEF_QCONTROLSYMSUBSTPASS
 #include "Quantum/Transforms/Passes.h.inc"
 
 struct QControlLoweringPass : impl::QControlLoweringPassBase<QControlLoweringPass> {
@@ -53,7 +54,23 @@ struct QControlLoweringPass : impl::QControlLoweringPassBase<QControlLoweringPas
         LLVM_DEBUG(dbgs() << "Quantum control lowering pass" << "\n");
 
         RewritePatternSet patterns(&getContext());
-        populateQControlPatterns(patterns);
+        populateQControlLoweringPatterns(patterns);
+
+        if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
+            return signalPassFailure();
+        }
+    }
+};
+
+struct QControlSymsubstPass : impl::QControlSymsubstPassBase<QControlSymsubstPass> {
+    using QControlSymsubstPassBase::QControlSymsubstPassBase;
+
+    void runOnOperation() final
+    {
+        LLVM_DEBUG(dbgs() << "Quantum control symbolic substitution pass" << "\n");
+
+        RewritePatternSet patterns(&getContext());
+        populateQControlSymsubstPatterns(patterns);
 
         if (failed(applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
             return signalPassFailure();
@@ -66,6 +83,11 @@ struct QControlLoweringPass : impl::QControlLoweringPassBase<QControlLoweringPas
 std::unique_ptr<Pass> createQControlLoweringPass()
 {
     return std::make_unique<quantum::QControlLoweringPass>();
+}
+
+std::unique_ptr<Pass> createQControlSymsubstPass()
+{
+    return std::make_unique<quantum::QControlSymsubstPass>();
 }
 
 } // namespace catalyst

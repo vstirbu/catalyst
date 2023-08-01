@@ -26,5 +26,6 @@ std::unique_ptr<mlir::Pass> createEmitCatalystPyInterfacePass();
 std::unique_ptr<mlir::Pass> createCopyGlobalMemRefPass();
 std::unique_ptr<mlir::Pass> createAdjointLoweringPass();
 std::unique_ptr<mlir::Pass> createQControlLoweringPass();
+std::unique_ptr<mlir::Pass> createQControlSymsubstPass();
 
 } // namespace catalyst
