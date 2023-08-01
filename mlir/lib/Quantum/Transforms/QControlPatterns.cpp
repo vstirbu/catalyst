@@ -29,6 +29,7 @@
 
 #include "Quantum/IR/QuantumOps.h"
 #include "Quantum/Transforms/Patterns.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 
 using namespace llvm;
 using namespace mlir;
@@ -36,11 +37,22 @@ using namespace catalyst::quantum;
 
 namespace {
 
-CustomOp cloneWith(
+scf::IfOp cloneModifyIfOp(
+    scf::IfOp op,
+    IRMapping &mapper,
+    OperandRange addCtrlQubits,
+    OperandRange addCtrlValues)
+{
+    // TODO
+    return op;
+}
+
+
+CustomOp cloneModifyCustomOp(
     CustomOp op,
     IRMapping &mapper,
-    OperandRange ctrlQubits,
-    OperandRange ctrlValues)
+    OperandRange addCtrlQubits,
+    OperandRange addCtrlValues)
 {
     std::vector<Value> inQubits;
     std::vector<Value> inParams;
@@ -56,21 +68,21 @@ CustomOp cloneWith(
         for (auto o: op.getOutQubits())
             resultTypes.push_back(o.getType());
 
+        for (auto o: op.getInCtrlQubits())
+            inCtrlQubits.push_back(mapper.lookupOrDefault(o));
+        for (auto o: addCtrlQubits)
+            inCtrlQubits.push_back(mapper.lookupOrDefault(o));
+
         // FIXME: figure out how to use llvm::concat for joining iterators
         for (auto o: op.getInCtrlValues())
             inCtrlValues.push_back(mapper.lookupOrDefault(o));
-        for (auto o: ctrlValues)
+        for (auto o: addCtrlValues)
             inCtrlValues.push_back(mapper.lookupOrDefault(o));
-
-        for (auto o: op.getInCtrlQubits())
-            inCtrlQubits.push_back(mapper.lookupOrDefault(o));
-        for (auto o: ctrlQubits)
-            inCtrlQubits.push_back(mapper.lookupOrDefault(o));
 
         // FIXME: figure out how to use llvm::concat for joining iterators
         for (auto o: op.getInCtrlQubits())
             controlTypes.push_back(o.getType());
-        for (auto o: ctrlQubits)
+        for (auto o: addCtrlQubits)
             controlTypes.push_back(o.getType());
     }
 
@@ -79,6 +91,15 @@ CustomOp cloneWith(
     CustomOp::build(builder, state, resultTypes, controlTypes, inParams, inQubits,
         op.getGateName(), op.getAdjointAttr(), inCtrlQubits, inCtrlValues);
     CustomOp newOp = dyn_cast<CustomOp>(builder.create(state));
+
+    std::vector<Value> ctrlQubits;
+    {
+        // FIXME: figure out how to use llvm::concat for joining iterators
+        for (auto o: op.getOutCtrlQubits())
+            ctrlQubits.push_back(mapper.lookupOrDefault(o));
+        for (auto o: addCtrlQubits)
+            ctrlQubits.push_back(mapper.lookupOrDefault(o));
+    }
 
     for (const auto &[qN, qO] : zip(newOp.getOutQubits(), op.getOutQubits()))
         mapper.map(qO, qN);
@@ -110,18 +131,23 @@ struct QControlSingleOpRewritePattern : public mlir::OpRewritePattern<CtrlOp> {
                         outputs.push_back(mapping.lookup(v));
                 }
                 else if (CustomOp custom = dyn_cast<CustomOp>(i)) {
-                    rewriter.insert(cloneWith(custom, mapping,
-                                              ctrl.getCtrlQubits(),
-                                              ctrl.getCtrlValues()));
+                    rewriter.insert(cloneModifyCustomOp(custom, mapping,
+                                                       ctrl.getCtrlQubits(),
+                                                       ctrl.getCtrlValues()));
                 }
-                /* else if (QuantumGate gate = dyn_cast<QuantumGate>(i)) { */
-                /*     QuantumGate clone = dyn_cast<QuantumGate>(gate->clone(mapping)); */
-                /*     clone.setCtrlArgs(ctrl.getCtrlQubits()); */
-                /*     clone.setCtrlValues(ctrl.getCtrlValues()); */
-                /*     rewriter.insert(clone); */
-                /* } */
+                // FIXME: unify the `cloneModify*` functions and replace them with a QuantumGate
+                // interface method call
                 else {
                     rewriter.insert(i.clone(mapping));
+                }
+            }
+            else if (isa<scf::SCFDialect>(i.getDialect())) {
+                LLVM_DEBUG(dbgs() << "SCF (Hybrid) operation: " << i << "\n");
+
+                if (scf::IfOp ifop = dyn_cast<scf::IfOp>(i)) {
+                    rewriter.insert(cloneModifyIfOp(ifop, mapping,
+                                                    ctrl.getCtrlQubits(),
+                                                    ctrl.getCtrlValues()));
                 }
             }
             else {
