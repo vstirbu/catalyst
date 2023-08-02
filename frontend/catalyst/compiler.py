@@ -261,7 +261,8 @@ class QuantumCompilationPass(PassPipeline):
 
     _executable = get_executable_path("quantum", "quantum-opt")
     _default_flags = ["--lower-gradients", "--debug-only=qcontrol", "--qcontrol-lowering",
-                      "--adjoint-lowering", "--convert-arraylist-to-memref"]
+                      "--adjoint-lowering", "--convert-arraylist-to-memref",
+                      "--mlir-print-ir-after-all", ]
 
     @staticmethod
     def get_output_filename(infile):

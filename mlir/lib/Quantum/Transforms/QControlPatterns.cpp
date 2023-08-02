@@ -37,6 +37,61 @@ using namespace catalyst::quantum;
 
 namespace {
 
+void cloneModifyForOp(
+    OpBuilder &builder,
+    scf::ForOp forOp,
+    IRMapping &mapper,
+    OperandRange addCtrlQubits,
+    OperandRange addCtrlValues)
+{
+    ssize_t numControl = addCtrlQubits.size();
+    auto start = mapper.lookupOrDefault(forOp.getLowerBound());
+    auto stop = mapper.lookupOrDefault(forOp.getUpperBound());
+    auto step = mapper.lookupOrDefault(forOp.getStep());
+    SmallVector<Value> argsInit;
+    for (const auto &a : forOp.getIterOperands())
+        argsInit.push_back(mapper.lookupOrDefault(a));
+    for (const auto &a : addCtrlQubits)
+        argsInit.push_back(mapper.lookupOrDefault(a));
+
+    auto newFor = builder.create<scf::ForOp>(
+        forOp.getLoc(), start, stop, step, argsInit,
+        [&](OpBuilder &bodyBuilder, Location loc, Value iv, ValueRange iterArgs) {
+            IRMapping bodyMapper(mapper);
+            bodyMapper.map(iv, forOp.getRegion().front().getArgument(0));
+            SmallVector<BlockArgument> args(forOp.getRegion().front().args_begin()+1,
+                                            forOp.getRegion().front().args_end());
+            for (const auto &[o, n] : zip(args,
+                                          ValueRange(iterArgs.begin(),
+                                                     iterArgs.end()+(-numControl)))) {
+                bodyMapper.map(o, n);
+            }
+            for(auto &op : forOp.getRegion().front().without_terminator()) {
+                bodyBuilder.insert(op.clone(bodyMapper));
+            }
+
+            SmallVector<Value> results;
+            for(const auto &r: forOp.getRegion().front().getTerminator()->getOperands()) {
+                results.push_back(bodyMapper.lookupOrDefault(r));
+            }
+            for(const auto &r: ValueRange(iterArgs.end()+(-numControl), iterArgs.end())) {
+                results.push_back(bodyMapper.lookupOrDefault(r));
+            }
+
+            bodyBuilder.create<scf::YieldOp>(loc, results);
+        });
+
+
+    for (const auto &[o, n] : zip(forOp.getResults(), newFor.getResults())) {
+        mapper.map(o, n);
+    }
+    for (const auto &[o, n] : zip(addCtrlQubits,
+                                  ResultRange(newFor.getResults().end()+(-numControl),
+                                              newFor.getResults().end()))) {
+        mapper.map(o, n);
+    }
+}
+
 scf::IfOp cloneModifyIfOp(
     scf::IfOp op,
     IRMapping &mapper,
@@ -144,10 +199,15 @@ struct QControlSingleOpRewritePattern : public mlir::OpRewritePattern<CtrlOp> {
             else if (isa<scf::SCFDialect>(i.getDialect())) {
                 LLVM_DEBUG(dbgs() << "SCF (Hybrid) operation: " << i << "\n");
 
-                if (scf::IfOp ifop = dyn_cast<scf::IfOp>(i)) {
-                    rewriter.insert(cloneModifyIfOp(ifop, mapping,
+                if (scf::IfOp op = dyn_cast<scf::IfOp>(i)) {
+                    rewriter.insert(cloneModifyIfOp(op, mapping,
                                                     ctrl.getCtrlQubits(),
                                                     ctrl.getCtrlValues()));
+                }
+                else if (scf::ForOp op = dyn_cast<scf::ForOp>(i)) {
+                    cloneModifyForOp(rewriter, op, mapping,
+                                     ctrl.getCtrlQubits(),
+                                     ctrl.getCtrlValues());
                 }
             }
             else {
