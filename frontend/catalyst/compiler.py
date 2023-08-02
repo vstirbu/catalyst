@@ -237,6 +237,9 @@ class MLIRToLLVMDialect(PassPipeline):
         # Run after -convert-math-to-llvm as it marks math::powf illegal without converting it.
         "--convert-math-to-libm",
         "--convert-gradient-to-llvm=use-generic-functions",
+        # gradient to llvm uses linalg.copy from an Enzyme bug around memref.copy
+        "--convert-linalg-to-loops",
+        "--convert-scf-to-cf",
         "--convert-arith-to-llvm",
         "--finalize-memref-to-llvm=use-generic-functions",
         "--convert-index-to-llvm",
@@ -379,6 +382,7 @@ class CompilerDriver:
             "-lrt_backend",
             "-lrt_capi",
             "-lpthread",
+            "-lmlir_runner_utils",
             "-lmlir_c_runner_utils",  # required for memref.copy
         ]
 
