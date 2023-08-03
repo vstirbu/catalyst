@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from io import TextIOWrapper
 from typing import List, Optional
 
-from mlir_quantum._mlir_libs._catalystDriver import run_compiler_driver
+from mlir_quantum.catalyst_driver import run_compiler_driver
 
 from catalyst._configuration import INSTALLED
 

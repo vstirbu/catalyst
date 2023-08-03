@@ -36,7 +36,7 @@ declare_mlir_python_extension(QuantumPythonSources.Extension
 )
 
 declare_mlir_python_extension(CatalystPythonDriver
-  MODULE_NAME _catalystDriver
+  MODULE_NAME catalyst_driver
   ADD_TO_PARENT QuantumPythonSources
   SOURCES
     PyCompilerDriver.cpp
@@ -50,9 +50,9 @@ declare_mlir_python_extension(CatalystPythonDriver
 
 add_mlir_python_common_capi_library(QuantumPythonCAPI
   INSTALL_COMPONENT QuantumPythonModules
-  INSTALL_DESTINATION python_packages/quantum/mlir_quantum/_mlir_libs
-  OUTPUT_DIRECTORY "${MLIR_BINARY_DIR}/python_packages/quantum/mlir_quantum/_mlir_libs"
-  RELATIVE_INSTALL_ROOT "../../../.."
+  INSTALL_DESTINATION python_packages/quantum/mlir_quantum
+  OUTPUT_DIRECTORY "${MLIR_BINARY_DIR}/python_packages/quantum/mlir_quantum"
+  RELATIVE_INSTALL_ROOT "../../.."
   DECLARED_SOURCES
     QuantumPythonSources
     MLIRPythonExtension.RegisterEverything
