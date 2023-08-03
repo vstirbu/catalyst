@@ -49,6 +49,7 @@ from catalyst.utils.tracing import TracingContext
 
 # pylint: disable=too-many-lines
 
+DEPTH=0
 
 def _trace_quantum_tape(
     cargs, ckwargs, qargs, _callee: Callable, _allow_quantum_measurements: bool = True
@@ -67,11 +68,15 @@ def _trace_quantum_tape(
         - Jax representaion of classical return values of ``_callee``
         - Jax representation of quantum return values obtained in the course of tracing
     """
+    global DEPTH
     assert len(qargs) == 1, f"A single quantum argument was expected, got {qargs}"
     with qml.QueuingManager.stop_recording():
         with JaxTape() as tape:
             with tape.quantum_tape:
+                print(f"{' '*DEPTH}Creating classical tracers. qarg is {qargs[0]}")
+                DEPTH=DEPTH+1
                 out = _callee(*cargs, **ckwargs)
+                DEPTH=DEPTH-1
             if not _allow_quantum_measurements and len(tape.quantum_tape.measurements) > 0:
                 raise ValueError("Quantum measurements are not allowed in this scope")
             if isinstance(out, Operation):
@@ -83,7 +88,10 @@ def _trace_quantum_tape(
 
     has_tracer_return_values = out is not None
     qreg = qargs[0]
+    print(f"{' '*DEPTH}Adding quantum tracers. qarg is {qargs[0]}")
+    DEPTH=DEPTH+1
     return_values, qreg, qubit_states = trace_quantum_tape(tape, qreg, has_tracer_return_values)
+    DEPTH=DEPTH-1
     qreg = insert_to_qreg(qubit_states, qreg)
     return return_values, [qreg]
 

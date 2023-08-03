@@ -1396,6 +1396,7 @@ def _qfor_lowering(
     body_nconsts: int,
     apply_reverse_transform: bool,
 ):
+    print("Lowering for_loop to MLIR")
     # Separate constants from iteration arguments.
     # The MLIR value provided by JAX for the iteration index is not needed
     # (as it's identical to the lower bound value).
