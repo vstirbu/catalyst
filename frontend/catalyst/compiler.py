@@ -241,6 +241,7 @@ class MLIRToLLVMDialect(PassPipeline):
         "--convert-linalg-to-loops",
         "--convert-scf-to-cf",
         "--convert-arith-to-llvm",
+        "--convert-gradient-to-llvm=use-generic-functions",
         "--finalize-memref-to-llvm=use-generic-functions",
         "--convert-index-to-llvm",
         "--convert-quantum-to-llvm",

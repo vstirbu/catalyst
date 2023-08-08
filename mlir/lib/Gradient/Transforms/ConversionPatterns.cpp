@@ -584,26 +584,6 @@ struct BackpropOpPattern : public ConvertOpToLLVMPattern<BackpropOp> {
         }
     }
 
-    // TODO(jacob): Useful for debugging but remember to remove it when cleaning up
-    void printMemRefF64(Operation *op, OpBuilder &builder, Value value) const
-    {
-        auto moduleOp = op->getParentOfType<ModuleOp>();
-        auto printFn = moduleOp.lookupSymbol("printMemrefF64");
-        auto unrankedMemRefType = UnrankedMemRefType::get(builder.getF64Type(), 0);
-        if (!printFn) {
-            OpBuilder::InsertionGuard insertionGuard(builder);
-            builder.setInsertionPointToStart(moduleOp.getBody());
-            printFn = builder.create<func::FuncOp>(
-                moduleOp.getLoc(), "printMemrefF64",
-                FunctionType::get(builder.getContext(), unrankedMemRefType, {}));
-            cast<func::FuncOp>(printFn).setPrivate();
-            printFn->setAttr("llvm.emit_c_interface", UnitAttr::get(builder.getContext()));
-        }
-
-        Value casted = builder.create<memref::CastOp>(op->getLoc(), unrankedMemRefType, value);
-        builder.create<func::CallOp>(op->getLoc(), cast<func::FuncOp>(printFn), casted);
-    }
-
     func::FuncOp genAugmentedForward(func::FuncOp qnode, OpBuilder &builder) const
     {
         std::string augmentedName = (qnode.getName() + ".augfwd").str();
