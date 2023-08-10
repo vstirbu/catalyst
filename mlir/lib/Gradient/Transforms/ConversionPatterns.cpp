@@ -34,6 +34,7 @@
 
 #include "Gradient/IR/GradientOps.h"
 #include "Gradient/Transforms/Patterns.h"
+#include "Gradient/Utils/DestinationPassingStyle.h"
 #include "Gradient/Utils/EinsumLinalgGeneric.h"
 #include "Gradient/Utils/GradientShape.h"
 #include "Quantum/IR/QuantumOps.h"
@@ -335,7 +336,7 @@ struct BackpropOpPattern : public ConvertOpToLLVMPattern<BackpropOp> {
             SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(op, op.getCalleeAttr());
         assert(callee && "Expected a valid callee of type func.func");
 
-        convertToDestinationPassingStyle(callee, rewriter);
+        catalyst::convertToDestinationPassingStyle(callee, rewriter);
         SymbolTableCollection symbolTable;
         traverseCallGraph(callee, symbolTable, [&](func::FuncOp func) {
             // Register custom gradients of quantum functions

@@ -18,6 +18,7 @@ MLIR/LLVM representations.
 import abc
 import os
 import pathlib
+import platform
 import shutil
 import subprocess
 import sys
@@ -219,6 +220,7 @@ class MLIRToLLVMDialect(PassPipeline):
 
     _executable = get_executable_path("quantum", "quantum-opt")
     _default_flags = [
+        "--convert-gradient-to-llvm=use-generic-functions",
         "--convert-linalg-to-loops",
         "--convert-scf-to-cf",
         # This pass expands memref operations that modify the metadata of a memref (sizes, offsets,
@@ -241,7 +243,6 @@ class MLIRToLLVMDialect(PassPipeline):
         "--convert-linalg-to-loops",
         "--convert-scf-to-cf",
         "--convert-arith-to-llvm",
-        "--convert-gradient-to-llvm=use-generic-functions",
         "--finalize-memref-to-llvm=use-generic-functions",
         "--convert-index-to-llvm",
         "--convert-quantum-to-llvm",
@@ -307,8 +308,11 @@ class Enzyme(PassPipeline):
 
     _executable = get_executable_path("llvm", "opt")
     enzyme_path = get_lib_path("enzyme", "ENZYME_LIB_DIR")
+    apple_ext = "dylib"
+    linux_ext = "so"
+    ext = linux_ext if platform.system() == "Linux" else apple_ext
     _default_flags = [
-        f"-load-pass-plugin={enzyme_path}/LLVMEnzyme-17.so",
+        f"-load-pass-plugin={enzyme_path}/LLVMEnzyme-17.{ext}",
         # preserve-nvvm transforms certain global arrays to LLVM metadata that Enzyme will recognize
         "-passes=preserve-nvvm,enzyme",
         "-S",
@@ -371,19 +375,23 @@ class CompilerDriver:
         rt_lib_path = get_lib_path("runtime", "RUNTIME_LIB_DIR")
         rt_capi_path = os.path.join(rt_lib_path, "capi")
         rt_backend_path = os.path.join(rt_lib_path, "backend")
+        error_flag_apple = "-Wl,-arch_errors_fatal"
+        error_flag_linux = ""
+        error_flag = error_flag_linux if platform.system() == "Linux" else error_flag_apple
 
         default_flags = [
             "-shared",
             "-rdynamic",
-            "-Wl,-no-as-needed",
-            f"-Wl,-rpath,{rt_capi_path}:{rt_backend_path}:{mlir_lib_path}",
+            f"-Wl,-rpath,{rt_capi_path}",
+            f"-Wl,-rpath,{rt_backend_path}",
+            f"-Wl,-rpath,{mlir_lib_path}",
             f"-L{mlir_lib_path}",
             f"-L{rt_capi_path}",
             f"-L{rt_backend_path}",
             "-lrt_backend",
             "-lrt_capi",
             "-lpthread",
-            "-lmlir_runner_utils",
+            f"{error_flag}",
             "-lmlir_c_runner_utils",  # required for memref.copy
         ]
 
