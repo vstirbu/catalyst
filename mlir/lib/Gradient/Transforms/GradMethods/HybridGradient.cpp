@@ -37,7 +37,12 @@ using namespace mlir;
 namespace catalyst {
 namespace gradient {
 
-LogicalResult HybridGradientLowering::matchAndRewrite(GradOp op, PatternRewriter &rewriter) const
+LogicalResult HybridGradientLowering::match(GradOp op) const
+{
+    return success(op.getMethod() == "defer");
+}
+
+void HybridGradientLowering::rewrite(GradOp op, PatternRewriter &rewriter) const
 {
     Location loc = op.getLoc();
     func::FuncOp callee =
@@ -213,7 +218,6 @@ LogicalResult HybridGradientLowering::matchAndRewrite(GradOp op, PatternRewriter
     }
 
     rewriter.replaceOp(op, backpropResults);
-    return success();
 }
 
 func::FuncOp HybridGradientLowering::genQNodeWithParams(PatternRewriter &rewriter, Location loc,
