@@ -20,7 +20,6 @@ import functools
 import inspect
 import typing
 import warnings
-import pathlib
 from enum import Enum
 
 import jax
@@ -459,7 +458,7 @@ class QJIT:
         compile_options (Optional[CompileOptions]): common compilation options
     """
 
-    def __init__(self, fn, compile_options: CompileOptions):
+    def __init__(self, fn, compile_options):
         self.qfunc = fn
         self.jaxed_qfunc = None
         self.c_sig = None
@@ -474,16 +473,11 @@ class QJIT:
         self.shape = None
         parameter_types = get_type_annotations(self.qfunc)
         self.user_typed = False
-        self.compiling_from_textual_ir = isinstance(fn, str)
-        if self.compiling_from_textual_ir:
-            pass
-        else:
-            parameter_types = get_type_annotations(self.qfunc)
-            if parameter_types is not None:
-                self.user_typed = True
-                self.mlir_module = self.get_mlir(*parameter_types)
-                if self.compile_options.target == "binary":
-                    self.compiled_function = self.compile()
+        if parameter_types is not None:
+            self.user_typed = True
+            self.mlir_module = self.get_mlir(*parameter_types)
+            if self.compile_options.target == "binary":
+                self.compiled_function = self.compile()
 
     def print_stage(self, stage):
         """Print one of the recorded stages.
@@ -539,39 +533,28 @@ class QJIT:
 
     def compile(self):
         """Compile the current MLIR module."""
-        if self.compiling_from_textual_ir:
-            import __main__
 
-            module_name = pathlib.Path(__main__.__file__).stem
-            shared_object = self._compiler.run_from_ir(
-                self.qfunc, module_name, options=self.compile_options
-            )
+        # This will make a check before sending it to the compiler that the return type
+        # is actually available in most systems. f16 needs a special symbol and linking
+        # will fail if it is not available.
+        if self.compiled_function and self.compiled_function.shared_object:
+            self.compiled_function.shared_object.close()
+        restype = self.mlir_module.body.operations[0].type.results
+        for res in restype:
+            baseType = ir.RankedTensorType(res).element_type
+            mlir_type_to_numpy_type(baseType)
 
-            # Hardcoded
-            with ir.Context():
-                restype = [ir.RankedTensorType.parse("tensor<f64>")] * 2
-            qfunc_name = "jit_romainworkflow"
-        else:
-            # This will make a check before sending it to the compiler that the return type
-            # is actually available in most systems. f16 needs a special symbol and linking
-            # will fail if it is not available.
-            restype = self.mlir_module.body.operations[0].type.results
-            for res in restype:
-                baseType = ir.RankedTensorType(res).element_type
-                mlir_type_to_numpy_type(baseType)
-
-            # The function name out of MLIR has quotes around it, which we need to remove.
-            # The MLIR function name is actually a derived type from string which has no
-            # `replace` method, so we need to get a regular Python string out of it.
-            qfunc_name = str(self.mlir_module.body.operations[0].name).replace('"', "")
-
-            shared_object = self._compiler.run(
-                self.mlir_module,
-                options=self.compile_options,
-            )
+        shared_object = self._compiler.run(
+            self.mlir_module,
+            options=self.compile_options,
+        )
 
         self._llvmir = self._compiler.get_output_of("LLVMDialectToLLVMIR")
 
+        # The function name out of MLIR has quotes around it, which we need to remove.
+        # The MLIR function name is actually a derived type from string which has no
+        # `replace` method, so we need to get a regular Python string out of it.
+        qfunc_name = str(self.mlir_module.body.operations[0].name).replace('"', "")
         return CompiledFunction(shared_object, qfunc_name, restype)
 
     def _maybe_promote(self, function, *args):
@@ -601,8 +584,7 @@ class QJIT:
             if self.user_typed:
                 msg = "Provided arguments did not match declared signature, recompiling..."
                 warnings.warn(msg, UserWarning)
-            if not self.compiling_from_textual_ir:
-                self.mlir_module = self.get_mlir(*r_sig)
+            self.mlir_module = self.get_mlir(*r_sig)
             function = self.compile()
         else:
             assert next_action == TypeCompatibility.CAN_SKIP_PROMOTION
