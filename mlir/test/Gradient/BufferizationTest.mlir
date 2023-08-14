@@ -44,7 +44,7 @@ func.func @backprop(%arg0: f64, %arg1: tensor<?xf64>) {
 
 // -----
 
-func.func private @circuit3(%arg0: tensor<3x2xf64>)
+func.func private @circuit3(%arg0: tensor<?x2xf64>)
 
 // CHECK-LABEL: @backprop2
 func.func @backprop2(%arg0: tensor<?x2xf64>, %arg1: tensor<?xf64>) {
