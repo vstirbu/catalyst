@@ -158,6 +158,10 @@
 * Fix incorrect return value data-type with functions returning ``qml.counts``.
   [#221](https://github.com/PennyLaneAI/catalyst/pull/221)
 
+* Fix segmentation fault when differentiating a function where a quantum measurement is used
+  multiple times by the same operation.
+  [#242](https://github.com/PennyLaneAI/catalyst/pull/242)
+
 <h3>Contributors</h3>
 
 This release contains contributions from (in alphabetical order):
@@ -179,6 +183,10 @@ Sergei Mironov.
   PennyLane. The Lightning-Kokkos backend with Serial and OpenMP modes is also added to the binary
   distribution.
   [#198](https://github.com/PennyLaneAI/catalyst/pull/198)
+
+* Return a list of decompositions when calling the decomposition method for control operations.
+  This allows Catalyst to be compatible with upstream PennyLane.
+  [#241](https://github.com/PennyLaneAI/catalyst/pull/241)
 
 <h3>Improvements</h3>
 
